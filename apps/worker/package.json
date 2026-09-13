@@ -1,0 +1,8 @@
+{
+  "name": "@gtm/worker",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "dev": "tsx watch src/index.ts", "start": "node dist/index.js", "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit" },
+  "dependencies": { "@gtm/ai": "workspace:*", "@gtm/contacts": "workspace:*", "@gtm/crawler": "workspace:*", "@gtm/db": "workspace:*", "@gtm/email": "workspace:*", "@gtm/operations": "workspace:*", "@gtm/research": "workspace:*", "@gtm/scoring": "workspace:*", "@gtm/shared": "workspace:*", "@gtm/signals": "workspace:*", "@gtm/sources": "workspace:*", "dotenv": "^17.2.2", "pino": "^9.9.0", "zod": "^4.1.5" },
+  "devDependencies": { "tsx": "^4.20.5" }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "@gtm/research", "version": "0.1.0", "type": "module",
+  "exports": { ".": { "types": "./src/index.ts", "default": "./dist/index.js" } },
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit" },
+  "dependencies": { "@gtm/ai": "workspace:*", "@gtm/crawler": "workspace:*", "@gtm/shared": "workspace:*" }
+}

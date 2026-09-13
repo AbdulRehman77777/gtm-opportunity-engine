@@ -1,0 +1,1 @@
+{"name":"@gtm/email","version":"0.1.0","type":"module","exports":{".":{"types":"./src/index.ts","default":"./dist/index.js"}},"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc -p tsconfig.json --noEmit"},"dependencies":{"imapflow":"^1.0.195","mailparser":"^3.7.4","nodemailer":"^7.0.6"},"devDependencies":{"@types/mailparser":"^3.4.6","@types/nodemailer":"^7.0.1"}}

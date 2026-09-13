@@ -1,0 +1,6 @@
+{
+  "name": "@gtm/crawler", "version": "0.1.0", "type": "module",
+  "exports": { ".": { "types": "./src/index.ts", "default": "./dist/index.js" } },
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit" },
+  "dependencies": { "@gtm/shared": "workspace:*", "cheerio": "^1.1.2" }
+}

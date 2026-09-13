@@ -1,0 +1,26 @@
+services:
+  api:
+    build: .
+    command: pnpm --filter @gtm/api start
+    env_file: .env
+    ports: ["4100:4100"]
+    volumes: ["gtm-data:/app/data"]
+    depends_on: [ollama]
+  worker:
+    build: .
+    command: pnpm --filter @gtm/worker start
+    env_file: .env
+    volumes: ["gtm-data:/app/data"]
+    depends_on: [api, ollama]
+  web:
+    build: .
+    command: pnpm --filter @gtm/web preview --host 0.0.0.0
+    ports: ["4173:4173"]
+    depends_on: [api]
+  ollama:
+    image: ollama/ollama:latest
+    volumes: ["ollama-data:/root/.ollama"]
+    ports: ["11434:11434"]
+volumes:
+  gtm-data:
+  ollama-data:
