@@ -22,7 +22,7 @@ Raw observations and duplicate source mappings are retained. Canonical records m
 - `packages/crawler`: bounded, robots-aware HTTP retrieval, page cleaning, internal-link ranking, and page cache contracts.
 - `packages/research`: domain resolution, deterministic evidence extraction, profile assembly, and opportunity explanations.
 - `packages/signals`: configurable evidence-to-signal rules with severity and source-quality weighting.
-- `packages/ai`: provider-neutral structured generation with a resilient Ollama implementation.
+- `packages/ai`: provider-neutral structured generation with Groq, Ollama, ordered fallback, health reporting, and strict Zod validation.
 - `packages/operations`: service selection, grounded drafts, send guardrails, reply intent, candidate matching, and scheduling.
 - `packages/email`: replaceable SMTP and IMAP providers; credentials remain environment-only.
 

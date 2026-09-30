@@ -8,4 +8,4 @@
 
 Source discovery can be queued through the API. CSV and manual imports are synchronous bounded operations; remote board fetches are handled by the worker.
 
-Ollama is optional for deterministic research. Install the model named by `OLLAMA_MODEL` to enable semantic enrichment. Check `/health/ollama` before debugging AI output; an unavailable model does not block crawling, evidence extraction, profiles, or enriched scores.
+AI is optional for deterministic research. The preferred setup uses `AI_PROVIDER=auto` with a Groq key and an optional Ollama fallback. Use `AI_PROVIDER=ollama` for a completely local setup or `AI_PROVIDER=none` for deterministic-only operation. Check `/health/ai` before debugging enrichment; `/health/ollama` remains available for local-provider diagnostics. No provider outage blocks crawling, evidence extraction, profiles, or deterministic scores.

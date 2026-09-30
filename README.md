@@ -22,9 +22,19 @@ No email sending, authenticated LinkedIn scraping, browser automation, or autono
 
 ## Milestone 2: Company Intelligence Engine
 
-Promising opportunities can now be researched asynchronously. The staged worker resolves a supported company domain, performs a bounded first-party crawl, stores page versions, extracts deterministic evidence, creates severity-weighted signals, optionally requests schema-validated Ollama analysis, builds a versioned company profile, and appends enriched score snapshots.
+Promising opportunities can now be researched asynchronously. The staged worker resolves a supported company domain, performs a bounded first-party crawl, stores page versions, extracts deterministic evidence, creates severity-weighted signals, optionally requests schema-validated AI analysis, builds a versioned company profile, and appends enriched score snapshots.
 
-Open an opportunity in the dashboard to see its company intelligence view, evidence ledger, signals, score changes, research history, and **Research now** action. Ollama is optional: `/health/ollama` reports `available`, `unavailable`, or `misconfigured`, and deterministic research continues when it is offline.
+Open an opportunity in the dashboard to see its company intelligence view, evidence ledger, signals, score changes, research history, and **Research now** action. `/health/ai` reports the selected provider without exposing secrets. `/health/ollama` remains for compatibility, and deterministic research continues when every AI provider is offline.
+
+## AI configuration
+
+The default `AI_PROVIDER=auto` order is Groq (`openai/gpt-oss-120b`) → Ollama (`qwen2.5:7b`) → deterministic Northstar. Set `GROQ_API_KEY` only in `.env`; prompts and credentials are not logged by default. Groq availability, quotas, and pricing are controlled by Groq and must not be assumed to remain free.
+
+- Preferred: keep `AI_PROVIDER=auto`, configure `GROQ_API_KEY`, and optionally run Ollama as fallback.
+- Completely local: set `AI_PROVIDER=ollama`; Northstar never starts Ollama for you.
+- No AI: set `AI_PROVIDER=none`; crawling, evidence, eligibility, scoring, queues, and approved email operations remain available.
+
+Academic opportunity analysis, professor matching, and outreach drafting run as durable worker jobs. Inputs are bounded stored evidence; outputs are Zod-validated, grounded to evidence IDs, cached by normalized input hash, and retain provider/model/token metadata. Generated outreach is always a draft and cannot bypass approval.
 
 ## Run locally
 
