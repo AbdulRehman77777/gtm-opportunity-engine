@@ -73,3 +73,16 @@ export interface CampaignRow{id:string;name:string;status:string;serviceName:str
 export async function getCampaigns(){const response=await fetch('/api/campaigns');if(!response.ok)throw new Error('Could not load campaigns');return (await response.json() as {data:CampaignRow[]}).data;}
 export async function createCampaign(input:{name:string;targeting:Record<string,unknown>;messageStrategy?:string}){const response=await fetch('/api/campaigns',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});if(!response.ok)throw new Error('Could not create campaign');return response.json();}
 export async function updateCampaign(id:string,input:Record<string,unknown>){const response=await fetch(`/api/campaigns/${id}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(input)});if(!response.ok)throw new Error('Could not update campaign');return response.json();}
+
+export type AcademicOpportunity={id:string;title:string;country:string;degree_level:string;deadline:string|null;status:string;funding_category:string;eligibility_status:string;current_score:number;university_name:string;source_url:string|null};
+export type AcademicProfile={id:string;name:string;nationality:string;location:string;education:Array<{degree:string;institution:string;status:string;cgpa?:number}>;manuscripts:Array<{title:string;status:'MANUSCRIPT'|'PREPRINT'|'SUBMITTED'|'ACCEPTED'|'PUBLISHED'}>;background:Record<string,unknown>;primaryInterests:string[];secondaryInterests:string[];countryPriorities:Record<string,string[]>;updatedAt:string};
+export type AcademicToday={counts:{active_opportunities:number;professors_ready:number;drafts_awaiting_approval:number;followups_due:number;changed_sources:number};opportunities:AcademicOpportunity[];deadlines:Array<{id:string;kind:string;deadlineAt:string;opportunityId:string}>;professorCases:Array<Record<string,unknown>>};
+async function academic<T>(path:string,init?:RequestInit){const response=await fetch(`/api/academic${path}`,init);if(!response.ok)throw new Error(await errorMessage(response));return(await response.json() as {data:T}).data;}
+export const getAcademicToday=()=>academic<AcademicToday>('/today');
+export const getAcademicOpportunities=()=>academic<AcademicOpportunity[]>('/opportunities');
+export const getAcademicUniversities=()=>academic<Array<{id:string;canonicalName:string;country:string;city:string|null;officialUrl:string|null;confidence:number}>>('/universities');
+export const getProfessorCases=()=>academic<Array<Record<string,unknown>>>('/professor-cases');
+export const getAcademicProfile=()=>academic<AcademicProfile>('/profile');
+export const updateAcademicProfile=(profile:Omit<AcademicProfile,'id'|'updatedAt'>)=>academic<AcademicProfile>('/profile',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(profile)});
+export const getAcademicDeadlines=()=>academic<Array<{id:string;kind:string;deadlineAt:string;opportunityId:string;status:string}>>('/deadlines');
+export const getAcademicOutreach=()=>academic<Array<Record<string,unknown>>>('/outreach');

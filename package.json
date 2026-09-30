@@ -10,6 +10,7 @@
     "dev:api": "corepack pnpm --filter @gtm/api dev",
     "dev:worker": "corepack pnpm --filter @gtm/worker dev",
     "dev:web": "corepack pnpm --filter @gtm/web dev",
+    "dev:mcp": "corepack pnpm --filter @gtm/mcp dev",
     "db:generate": "corepack pnpm --filter @gtm/db db:generate",
     "db:migrate": "corepack pnpm --filter @gtm/db db:migrate",
     "lint": "eslint . --max-warnings=0",

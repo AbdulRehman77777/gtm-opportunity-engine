@@ -1,5 +1,7 @@
 # Northstar GTM Opportunity Engine
 
+Northstar now includes **Academic Intelligence**, a private evidence-backed research operating system for Abdul Rehman. It preserves the existing client/job GTM funnels and adds separate universities, programs, funding, professor cases, eligibility, scoring, applications, documents, outreach, source history, and MCP tools. See [Academic Intelligence](docs/academic-intelligence.md).
+
 A local-first opportunity intelligence system for U.S. AI, LLM, Python, full-stack, SaaS, and automation work. Northstar keeps client acquisition and job acquisition as separate funnels while preserving shared source evidence and complete history.
 
 ## Milestone 1: Opportunity Intelligence Engine
@@ -34,6 +36,7 @@ corepack enable
 pnpm install
 pnpm db:migrate
 pnpm dev
+pnpm dev:mcp
 ```
 
 Open `http://localhost:5173`. The API listens on `http://localhost:4100`.
