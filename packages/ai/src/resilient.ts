@@ -3,7 +3,7 @@ import { GroqProvider } from './groq.js';
 import { OllamaProvider } from './ollama.js';
 import { AIProviderError, type AIHealth, type AIProvider, type StructuredGeneration } from './types.js';
 
-export class DisabledAIProvider implements AIProvider{readonly name='none';modelInfo(){return{provider:'none',model:'none',baseUrl:'local'};}async healthCheck():Promise<AIHealth>{return{status:'misconfigured',provider:'none',model:'none',detail:'AI is disabled'}}async generateStructured<T>(_input:{system:string;prompt:string;schema:z.ZodType<T>;schemaName:string;temperature?:number}):Promise<StructuredGeneration<T>>{throw new AIProviderError('AI is disabled','MISCONFIGURED','none');}}
+export class DisabledAIProvider implements AIProvider{readonly name='none';modelInfo(){return{provider:'none',model:'none',baseUrl:'local'};}async healthCheck():Promise<AIHealth>{return{status:'misconfigured',provider:'none',model:'none',detail:'AI is disabled'}}async generateStructured<T>(input:{system:string;prompt:string;schema:z.ZodType<T>;schemaName:string;temperature?:number}):Promise<StructuredGeneration<T>>{void input;throw new AIProviderError('AI is disabled','MISCONFIGURED','none');}}
 
 export class ResilientAIProvider implements AIProvider{
   readonly name='auto';
