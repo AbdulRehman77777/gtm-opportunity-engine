@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { resolve } from 'node:path';
 import pino from 'pino';
 import { CompanyCrawler } from '@gtm/crawler';
 import { companyAnalysisSchema, OllamaProvider, type AIProvider } from '@gtm/ai';
 import { basicEmailChecks, contactConfidence, detectEmailPattern, discoverPublicContacts, extractPeople, inferEmail, rankDecisionMakers, validateEmail, type ContactValidationResult } from '@gtm/contacts';
-import { ContactRepository, createDatabase, FinalRepository, GtmRepository, ResearchRepository, type DatabaseConnection } from '@gtm/db';
+import { AcademicRepository, ContactRepository, createDatabase, FinalRepository, GtmRepository, ResearchRepository, type DatabaseConnection } from '@gtm/db';
 import { DEFAULT_EXCLUDED_KEYWORDS, DEFAULT_JOB_KEYWORDS, loadConfig } from '@gtm/shared';
 import { getSourceAdapter, SourceHttpError } from '@gtm/sources';
 import { isRelevantJob } from '@gtm/scoring';
@@ -20,6 +21,7 @@ export class Worker {
   private readonly contactRepository: ContactRepository;
   private readonly operationsRepository: OperationsRepository;
   private readonly finalRepository: FinalRepository;
+  private readonly academicRepository: AcademicRepository;
   private readonly id = `worker-${randomUUID()}`;
   private stopped = false;
   private readonly log;
@@ -37,6 +39,7 @@ export class Worker {
     this.contactRepository = new ContactRepository(this.connection);
     this.operationsRepository = new OperationsRepository(this.connection);
     this.finalRepository = new FinalRepository(this.connection);
+    this.academicRepository = new AcademicRepository(this.connection);
     this.aiProvider = aiProvider ?? new OllamaProvider(this.config.OLLAMA_BASE_URL, this.config.OLLAMA_MODEL);
     this.contactValidator = contactValidator;
     this.emailProvider=emailProvider??new SMTPProvider({host:this.config.SMTP_HOST,port:this.config.SMTP_PORT,secure:this.config.SMTP_SECURE,user:this.config.SMTP_USER,password:this.config.SMTP_PASSWORD});
@@ -46,6 +49,7 @@ export class Worker {
 
   async runOnce(): Promise<boolean> {
     this.finalRepository.scheduleRecurring({ imapEnabled: Boolean(this.config.IMAP_HOST && this.config.IMAP_USER && this.config.IMAP_PASSWORD) });
+    this.academicRepository.queueDueSourceRefreshes();
     const queued = this.repository.claimNext(this.id);
     if (!queued) return false;
     try {
@@ -75,6 +79,8 @@ export class Worker {
         case 'POLL_INBOX': result = await this.pollInbox(); break;
         case 'CALCULATE_ANALYTICS': result = this.finalRepository.analytics(); break;
         case 'EVALUATE_MODELS': result = this.evaluateModels(); break;
+        case 'RESEARCH_ACADEMIC_URL': result = await this.researchAcademicUrl(String(payload.sourceId)); break;
+        case 'SEND_ACADEMIC_OUTREACH': result = await this.sendAcademicOutreach(String(payload.outreachId)); break;
         default: throw new Error(`Unknown worker job type: ${queued.type}`);
       }
       this.repository.completeWorkerJob(queued.id, result);
@@ -105,6 +111,8 @@ export class Worker {
     const sending=this.operationsRepository.beginSend(messageId,{minimumConfidence:this.config.MIN_CONTACT_CONFIDENCE,hourlyLimit:this.config.EMAILS_PER_HOUR,dailyLimit:this.config.EMAILS_PER_DAY});
     try{const result=await this.emailProvider.send({from:this.config.SMTP_FROM??this.config.SMTP_USER??'local@localhost',replyTo:this.config.SMTP_REPLY_TO,to:sending.contact.contactValue,subject:String(sending.subject),text:sending.version.textBody,html:sending.version.htmlBody});return this.operationsRepository.finishSend(sending.attemptId,result);}catch(error){this.operationsRepository.failSend(sending.attemptId,error);throw error;}
   }
+  private async researchAcademicUrl(sourceId:string){const run=this.academicRepository.beginAcademicResearch(sourceId);const domain=new URL(run.source.url).hostname;const crawler=new CompanyCrawler({maxPages:Math.min(8,this.config.MAX_PAGES_PER_COMPANY),maxDepth:1,timeoutMs:this.config.REQUEST_TIMEOUT_MS,maxResponseBytes:this.config.MAX_RESPONSE_BYTES,requestsPerDomain:this.config.REQUESTS_PER_DOMAIN,globalConcurrency:this.config.GLOBAL_CONCURRENCY,userAgent:'NorthstarAcademicResearch/0.1 (+public-evidence-only)'});const results=await crawler.crawl(domain);const pages=results.filter(result=>result.page&&result.contentHash).map(result=>({contentHash:result.contentHash!,title:result.page!.title,textContent:result.page!.textContent,httpStatus:result.httpStatus,url:result.page!.url}));if(!pages.length)throw new Error('No usable public academic pages were retrieved');return this.academicRepository.finishAcademicResearch(run.id,sourceId,pages);}
+  private async sendAcademicOutreach(outreachId:string){const sending=this.academicRepository.beginAcademicSend(outreachId,{hourly:this.config.EMAILS_PER_HOUR,daily:this.config.EMAILS_PER_DAY});try{const documents=this.academicRepository.getDocuments(sending.documentIds);if(documents.length!==sending.documentIds.length)throw new Error('One or more approved academic attachments are unavailable');const directory=resolve(this.config.ACADEMIC_DOCUMENT_DIRECTORY);const attachments=documents.map(document=>({filename:document.original_filename,path:resolve(directory,document.storage_key),contentType:document.mime_type}));const result=await this.emailProvider.send({from:this.config.SMTP_FROM??this.config.SMTP_USER??'local@localhost',replyTo:this.config.SMTP_REPLY_TO,to:sending.recipientEmail!,subject:sending.subjects[0]??'Prospective graduate research inquiry',text:sending.textBody,attachments});return this.academicRepository.finishAcademicSend(outreachId,result);}catch(error){this.academicRepository.failAcademicSend(outreachId,error);throw error;}}
   private processIncoming(payload:Record<string,unknown>){const saved=this.operationsRepository.ingestReply({threadId:String(payload.threadId),messageId:String(payload.messageId),...(typeof payload.inReplyTo==='string'?{inReplyTo:payload.inReplyTo}:{}),references:Array.isArray(payload.references)?payload.references.map(String):[],sender:String(payload.sender),recipients:Array.isArray(payload.recipients)?payload.recipients.map(String):[],subject:String(payload.subject),textBody:String(payload.textBody),...(typeof payload.occurredAt==='string'?{occurredAt:payload.occurredAt}:{})});if(!saved.cached)this.repository.enqueue('CLASSIFY_REPLY',{emailMessageId:saved.emailMessageId,textBody:String(payload.textBody)},`classify:${saved.emailMessageId}`,100);return saved;}
   private classifyReply(emailMessageId:string,textBody:string){return this.operationsRepository.saveReplyClassification(emailMessageId,classifyReplyDeterministically(textBody));}
   private async generateOutreach(opportunityId:string,force:boolean){const prepared=this.operationsRepository.prepareClient(opportunityId,{force});if(prepared.cached)return prepared;const health=await this.aiProvider.healthCheck();if(health.status!=='available')return{...prepared,ai:'FALLBACK'};try{const messages=this.operationsRepository.getClientOperations(opportunityId).messages as Array<Record<string,unknown>>;const result=await this.aiProvider.generateStructured({schema:outreachBundleSchema,schemaName:'outreach_bundle',temperature:.2,system:'Write concise human B2B outreach. Use only facts present in the supplied grounded drafts and strategy. Never add claims, praise, problems, pricing, availability, or experience. Return JSON matching the schema.',prompt:JSON.stringify({strategy:prepared.strategy,groundedDrafts:messages.map(message=>({channel:message.channel,followupNumber:message.followup_number,text:message.textBody,subjects:message.subjectsJson}))})});const email=messages.find(message=>message.channel==='EMAIL'&&Number(message.followup_number)===0),linkedin=messages.find(message=>message.channel==='LINKEDIN'),followups=messages.filter(message=>message.channel==='EMAIL'&&Number(message.followup_number)>0).sort((a,b)=>Number(a.followup_number)-Number(b.followup_number));if(email)this.operationsRepository.editMessage(String(email.id),{textBody:result.data.coldEmail,subjects:result.data.subjects});if(linkedin)this.operationsRepository.editMessage(String(linkedin.id),{textBody:result.data.linkedIn});followups.forEach((message,index)=>this.operationsRepository.editMessage(String(message.id),{textBody:result.data.followups[index]??String(message.textBody)}));return{...prepared,ai:'OLLAMA',model:result.model};}catch(error){this.log.warn({err:error,opportunityId},'Ollama outreach failed; deterministic drafts retained');return{...prepared,ai:'FALLBACK'};}}

@@ -2,10 +2,11 @@ import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import { ZodError, z } from 'zod';
 import { OllamaProvider, type AIProvider } from '@gtm/ai';
-import { ContactRepository, createDatabase, FinalRepository, GtmRepository, OperationsRepository, ResearchRepository, type DatabaseConnection } from '@gtm/db';
+import { AcademicRepository, ContactRepository, createDatabase, FinalRepository, GtmRepository, OperationsRepository, ResearchRepository, type DatabaseConnection } from '@gtm/db';
 import { ImapInboxProvider, SMTPProvider } from '@gtm/email';
 import { loadConfig, manualImportSchema, sourceKindSchema, sourceRunRequestSchema } from '@gtm/shared';
 import { normalizeManual, parseCsvImport } from '@gtm/sources';
+import { registerAcademicRoutes } from './academic-routes.js';
 
 const createSourceSchema = z.object({
   kind: sourceKindSchema, name: z.string().min(1), enabled: z.boolean().default(true), config: z.record(z.string(), z.unknown()).default({})
@@ -20,11 +21,15 @@ export async function buildApp(options: { connection?: DatabaseConnection; logge
   const contactRepository = new ContactRepository(connection);
   const operationsRepository = new OperationsRepository(connection);
   const finalRepository=new FinalRepository(connection);
+  const academicRepository=new AcademicRepository(connection);
   const aiProvider = options.aiProvider ?? new OllamaProvider(config.OLLAMA_BASE_URL, config.OLLAMA_MODEL);
   const smtpProvider=new SMTPProvider({host:config.SMTP_HOST,port:config.SMTP_PORT,secure:config.SMTP_SECURE,user:config.SMTP_USER,password:config.SMTP_PASSWORD});
   const imapProvider=new ImapInboxProvider({host:config.IMAP_HOST,port:config.IMAP_PORT,secure:config.IMAP_SECURE,user:config.IMAP_USER,password:config.IMAP_PASSWORD});
   const app = Fastify({ logger: options.logger === false ? false : { level: config.LOG_LEVEL } });
-  await app.register(cors, { origin: true });
+  const allowedOrigins=config.ALLOWED_ORIGINS.split(',').map(value=>value.trim()).filter(Boolean);
+  await app.register(cors, { origin: config.NODE_ENV==='development' ? true : allowedOrigins });
+  const requestBuckets=new Map<string,{minute:number;count:number}>();
+  app.addHook('onRequest',async(request,reply)=>{const minute=Math.floor(Date.now()/60_000),key=request.ip;const bucket=requestBuckets.get(key);if(!bucket||bucket.minute!==minute)requestBuckets.set(key,{minute,count:1});else if(++bucket.count>config.API_REQUESTS_PER_MINUTE)return reply.status(429).send({error:'RATE_LIMITED'});});
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ZodError) return reply.status(400).send({ error: 'VALIDATION_ERROR', details: error.issues });
@@ -39,6 +44,7 @@ export async function buildApp(options: { connection?: DatabaseConnection; logge
   app.get('/health/smtp', async () => config.SMTP_HOST ? smtpProvider.healthCheck() : {status:'misconfigured',detail:'SMTP_HOST is not configured'});
   app.get('/health/imap', async () => config.IMAP_HOST ? imapProvider.healthCheck() : {status:'misconfigured',detail:'IMAP_HOST is not configured'});
   app.get('/health/scheduler',async()=>finalRepository.schedulerHealth());
+  registerAcademicRoutes(app,academicRepository,config);
   app.get('/api/action-center', async () => operationsRepository.actionCenter());
   app.get('/api/analytics/operational', async(request)=>{const query=z.object({from:z.string().datetime().optional(),to:z.string().datetime().optional()}).parse(request.query);return finalRepository.analytics(query.from,query.to);});
   app.get('/api/data-quality',async()=>finalRepository.dataQuality());

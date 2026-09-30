@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 
-export type SendEmailInput={from:string;replyTo?:string|undefined;to:string;subject:string;text:string;html?:string|null;messageId?:string;inReplyTo?:string;references?:string[]};
+export type SendEmailInput={from:string;replyTo?:string|undefined;to:string;subject:string;text:string;html?:string|null;messageId?:string;inReplyTo?:string;references?:string[];attachments?:Array<{filename:string;path:string;contentType?:string}>};
 export type SendEmailResult={messageId:string;response?:unknown};
 export interface EmailProvider { send(input:SendEmailInput):Promise<SendEmailResult>; healthCheck():Promise<{status:'available'|'unavailable'|'misconfigured';detail?:string}>; }
 export interface EmailInboxProvider { poll(checkpoint:{lastUid:number},mailbox?:string):Promise<{uidValidity?:string;lastUid:number;messages:InboundEmail[]}>; healthCheck():Promise<{status:'available'|'unavailable'|'misconfigured';detail?:string}>; }
@@ -11,7 +11,7 @@ export type InboundEmail={uid:number;messageId:string;inReplyTo?:string;referenc
 export class SMTPProvider implements EmailProvider {
   private transporter;
   constructor(private readonly config:{host?:string|undefined;port:number;secure:boolean;user?:string|undefined;password?:string|undefined},transport?:ReturnType<typeof nodemailer.createTransport>){this.transporter=transport??(config.host?nodemailer.createTransport({host:config.host,port:config.port,secure:config.secure,auth:config.user?{user:config.user,pass:config.password}:undefined}):null);}
-  async send(input:SendEmailInput){if(!this.transporter)throw new Error('SMTP is misconfigured');const result=await this.transporter.sendMail({from:input.from,replyTo:input.replyTo,to:input.to,subject:input.subject,text:input.text,html:input.html??undefined,messageId:input.messageId,inReplyTo:input.inReplyTo,references:input.references});return{messageId:result.messageId,response:{accepted:result.accepted,rejected:result.rejected,response:result.response}};}
+  async send(input:SendEmailInput){if(!this.transporter)throw new Error('SMTP is misconfigured');const result=await this.transporter.sendMail({from:input.from,replyTo:input.replyTo,to:input.to,subject:input.subject,text:input.text,html:input.html??undefined,messageId:input.messageId,inReplyTo:input.inReplyTo,references:input.references,attachments:input.attachments});return{messageId:result.messageId,response:{accepted:result.accepted,rejected:result.rejected,response:result.response}};}
   async healthCheck(){if(!this.transporter)return{status:'misconfigured' as const,detail:'SMTP_HOST is not configured'};try{await this.transporter.verify();return{status:'available' as const};}catch(error){return{status:'unavailable' as const,detail:error instanceof Error?error.message:String(error)};}}
 }
 

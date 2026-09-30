@@ -41,13 +41,14 @@ export class CompanyCrawler {
     let lastError: unknown;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        const response = await this.fetcher(url, { redirect: 'follow', signal: AbortSignal.timeout(this.config.timeoutMs), headers: { accept, 'user-agent': this.config.userAgent ?? defaultConfig.userAgent! } });
+        const response = await this.fetchWithValidatedRedirects(url, accept);
         if (response.status === 429 || response.status >= 500) { const wait = retryAfter(response.headers.get('retry-after'), attempt); await delay(wait); lastError = new Error(`HTTP ${response.status}`); continue; }
         if (!response.ok) throw new Error(`HTTP ${response.status}`); return response;
       } catch (error) { lastError = error; if (attempt < 2) await delay(250 * 2 ** attempt); }
     }
     throw lastError instanceof Error ? lastError : new Error('Request failed');
   }
+  private async fetchWithValidatedRedirects(url:string,accept:string){let current=url;for(let redirect=0;redirect<=5;redirect+=1){const parsed=new URL(current);if(!['http:','https:'].includes(parsed.protocol))throw new Error('Only HTTP(S) URLs are crawlable');assertSafeHostname(parsed.hostname);const response=await this.fetcher(current,{redirect:'manual',signal:AbortSignal.timeout(this.config.timeoutMs),headers:{accept,'user-agent':this.config.userAgent??defaultConfig.userAgent!}});if(response.status<300||response.status>=400)return response;const location=response.headers.get('location');if(!location)throw new Error('Redirect is missing a location');current=new URL(location,current).toString();}throw new Error('Too many redirects');}
 
   private async loadRobots(root: string) {
     try { const response = await this.withRetry(new URL('/robots.txt', root).toString(), 'text/plain'); const text = await response.text(); return parseRobots(text, root); }

@@ -33,6 +33,14 @@ const envSchema = z.object({
   ,MIN_MODEL_SAMPLES: z.coerce.number().int().min(30).default(100)
   ,ANALYTICS_WINDOW_DAYS: z.coerce.number().int().positive().default(365)
   ,BACKUP_DIRECTORY: z.string().default('./backups')
+  ,ALLOWED_ORIGINS: z.string().default('http://localhost:5173,http://localhost:4173')
+  ,MCP_HOST: z.string().default('127.0.0.1')
+  ,MCP_PORT: z.coerce.number().int().positive().default(4200)
+  ,MCP_BEARER_TOKEN: z.string().min(24).optional()
+  ,ACADEMIC_DOCUMENT_DIRECTORY: z.string().default('./data/academic-documents')
+  ,ACADEMIC_MAX_DOCUMENT_BYTES: z.coerce.number().int().positive().default(10_000_000)
+  ,ACADEMIC_REFRESH_HOURS: z.coerce.number().int().min(1).default(168)
+  ,API_REQUESTS_PER_MINUTE: z.coerce.number().int().min(10).default(240)
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
