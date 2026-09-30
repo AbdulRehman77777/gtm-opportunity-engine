@@ -50,6 +50,13 @@
       "when": 1789292040072,
       "tag": "0006_absurd_elektra",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1790732803268,
+      "tag": "0007_motionless_wild_child",
+      "breakpoints": true
     }
   ]
 }

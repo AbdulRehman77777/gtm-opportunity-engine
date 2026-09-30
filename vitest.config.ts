@@ -6,6 +6,7 @@ const root = fileURLToPath(new URL('.', import.meta.url));
 export default defineConfig({
   resolve: { alias: {
     '@gtm/shared': `${root}packages/shared/src/index.ts`,
+    '@gtm/academic': `${root}packages/academic/src/index.ts`,
     '@gtm/scoring': `${root}packages/scoring/src/index.ts`,
     '@gtm/sources': `${root}packages/sources/src/index.ts`,
     '@gtm/db': `${root}packages/db/src/index.ts`,

@@ -1,0 +1,52 @@
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
+
+export const fundingCategorySchema=z.enum(['CONFIRMED_FULL_FUNDING','TUITION_FREE_FUNDING_REQUIRED','PARTIAL_FUNDING','POTENTIAL_FUNDING_UNCONFIRMED','SELF_FUNDED','UNKNOWN']);
+export type FundingCategory=z.infer<typeof fundingCategorySchema>;
+export const eligibilityStatusSchema=z.enum(['ELIGIBLE','LIKELY_ELIGIBLE','REVIEW_REQUIRED','LIKELY_INELIGIBLE','INELIGIBLE','UNKNOWN']);
+export type EligibilityStatus=z.infer<typeof eligibilityStatusSchema>;
+export const applicationStatusSchema=z.enum(['DISCOVERED','RESEARCHING','PROMISING','PROFESSOR_OUTREACH_READY','PROFESSOR_CONTACTED','PROFESSOR_REPLIED','APPLICATION_PREPARATION','APPLICATION_SUBMITTED','INTERVIEW','OFFER','FUNDED_OFFER','REJECTED','ARCHIVED']);
+export type ApplicationStatus=z.infer<typeof applicationStatusSchema>;
+
+export const educationSchema=z.object({degree:z.string().min(1),institution:z.string().min(1),status:z.string().min(1),cgpa:z.number().min(0).max(4).optional()});
+export const manuscriptSchema=z.object({title:z.string().min(1),status:z.enum(['MANUSCRIPT','PREPRINT','SUBMITTED','ACCEPTED','PUBLISHED']).default('MANUSCRIPT')});
+export const applicantProfileInputSchema=z.object({
+  name:z.string().min(1),nationality:z.string().min(1),location:z.string().min(1),education:z.array(educationSchema),manuscripts:z.array(manuscriptSchema),background:z.record(z.string(),z.unknown()),primaryInterests:z.array(z.string()),secondaryInterests:z.array(z.string()),countryPriorities:z.record(z.string(),z.array(z.string()))
+});
+export type ApplicantProfileInput=z.infer<typeof applicantProfileInputSchema>;
+
+export const universityInputSchema=z.object({name:z.string().min(1),country:z.string().min(1),city:z.string().optional(),officialUrl:z.string().url().optional(),admissionsUrl:z.string().url().optional(),graduateAdmissionsUrl:z.string().url().optional(),confidence:z.number().min(0).max(1).default(0)});
+export const programInputSchema=z.object({universityId:z.string().uuid(),departmentId:z.string().uuid().optional(),name:z.string().min(1),degreeLevel:z.enum(['MASTERS','PHD','MS_PHD','RESEARCH','OTHER']),websiteUrl:z.string().url().optional(),applicationUrl:z.string().url().optional(),requirements:z.record(z.string(),z.unknown()).default({})});
+export const professorInputSchema=z.object({universityId:z.string().uuid(),departmentId:z.string().uuid().optional(),researchGroupId:z.string().uuid().optional(),fullName:z.string().min(2),title:z.string().optional(),officialProfileUrl:z.string().url().optional(),labUrl:z.string().url().optional(),scholarUrl:z.string().url().optional(),orcid:z.string().optional(),publicEmail:z.string().email().optional(),researchAreas:z.array(z.string()).default([]),summary:z.string().optional(),recentWorks:z.array(z.record(z.string(),z.unknown())).default([]),projects:z.array(z.record(z.string(),z.unknown())).default([])});
+export const fundingInputSchema=z.object({universityId:z.string().uuid().optional(),programId:z.string().uuid().optional(),name:z.string().min(1),category:fundingCategorySchema.default('UNKNOWN'),tuitionCoverage:z.string().optional(),stipendAmount:z.number().nonnegative().optional(),stipendCurrency:z.string().length(3).optional(),stipendPeriod:z.string().optional(),accommodation:z.string().optional(),healthInsurance:z.string().optional(),travel:z.string().optional(),researchAllowance:z.string().optional(),assistantship:z.string().optional(),employmentContract:z.string().optional(),duration:z.string().optional(),conditions:z.string().optional(),officialSourceUrl:z.string().url().optional(),deadline:z.string().datetime().optional()});
+export const opportunityInputSchema=z.object({universityId:z.string().uuid(),programId:z.string().uuid().optional(),fundingOpportunityId:z.string().uuid().optional(),title:z.string().min(1),degreeLevel:z.string().min(1),country:z.string().min(1),deadline:z.string().datetime().optional(),fundingCategory:fundingCategorySchema.default('UNKNOWN'),sourceUrl:z.string().url().optional(),notes:z.string().optional()});
+export const evidenceInputSchema=z.object({sourceId:z.string().uuid(),pageVersionId:z.string().uuid().optional(),entityType:z.string().min(1),entityId:z.string().uuid(),claimType:z.string().min(1),claim:z.string().min(1),excerpt:z.string().optional(),sourceUrl:z.string().url(),classification:z.enum(['FACT','OBSERVATION','HYPOTHESIS']).default('FACT'),confidence:z.number().min(0).max(1)});
+
+export const normalizeAcademicName=(value:string)=>value.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(the|university|universitaet|universitat)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+export const professorIdentity=(universityId:string,name:string)=>createHash('sha256').update(`${universityId}:${normalizeAcademicName(name)}`).digest('hex');
+
+export function classifyFunding(input:{tuitionCoverage?:string|null;stipendAmount?:number|null;assistantship?:string|null;employmentContract?:string|null;explicitSelfFunded?:boolean;explicitPartial?:boolean}):FundingCategory{
+  if(input.explicitSelfFunded)return'SELF_FUNDED';
+  const tuition=(input.tuitionCoverage??'').toLowerCase(); const fullTuition=/full|100%|waiv|no tuition/.test(tuition); const living=Boolean((input.stipendAmount??0)>0||input.assistantship||input.employmentContract);
+  if(fullTuition&&living)return'CONFIRMED_FULL_FUNDING'; if(fullTuition)return'TUITION_FREE_FUNDING_REQUIRED'; if(input.explicitPartial)return'PARTIAL_FUNDING'; if(living)return'PARTIAL_FUNDING'; return'UNKNOWN';
+}
+
+export type EligibilityCriterion={key:string;result:'PASS'|'FAIL'|'REVIEW'|'UNKNOWN';reason:string;evidenceIds:string[]};
+export function evaluateEligibility(criteria:EligibilityCriterion[]):{status:EligibilityStatus;reasons:string[]}{
+  const reasons=criteria.map(c=>`${c.key}: ${c.reason}`); if(criteria.some(c=>c.result==='FAIL'))return{status:'INELIGIBLE',reasons}; if(!criteria.length||criteria.every(c=>c.result==='UNKNOWN'))return{status:'UNKNOWN',reasons}; if(criteria.some(c=>c.result==='REVIEW'))return{status:'REVIEW_REQUIRED',reasons}; if(criteria.some(c=>c.result==='UNKNOWN'))return{status:'LIKELY_ELIGIBLE',reasons}; return{status:'ELIGIBLE',reasons};
+}
+
+const fundingPoints:Record<FundingCategory,number>={CONFIRMED_FULL_FUNDING:30,TUITION_FREE_FUNDING_REQUIRED:13,PARTIAL_FUNDING:10,POTENTIAL_FUNDING_UNCONFIRMED:7,SELF_FUNDED:0,UNKNOWN:2};
+const eligibilityPoints:Record<EligibilityStatus,number>={ELIGIBLE:15,LIKELY_ELIGIBLE:12,REVIEW_REQUIRED:7,LIKELY_INELIGIBLE:2,INELIGIBLE:0,UNKNOWN:3};
+export function scoreAcademicOpportunity(input:{funding:FundingCategory;eligibility:EligibilityStatus;researchMatch:number;professorMatch:number;countryTier:1|2|3;programQuality:number;directSupervisor:boolean;deadlineFreshness:number;feasibility:number;contactability:number;evidenceCompleteness:number}){
+  const components={funding:fundingPoints[input.funding],researchMatch:Math.round(15*clamp(input.researchMatch)),professorMatch:Math.round(10*clamp(input.professorMatch)),eligibility:eligibilityPoints[input.eligibility],countryPriority:input.countryTier===1?5:input.countryTier===2?4:3,programQuality:Math.round(5*clamp(input.programQuality)),directSupervisor:input.directSupervisor?5:0,deadlineFreshness:Math.round(4*clamp(input.deadlineFreshness)),feasibility:Math.round(4*clamp(input.feasibility)),contactability:Math.round(3*clamp(input.contactability)),evidenceCompleteness:Math.round(4*clamp(input.evidenceCompleteness))};
+  return{total:Object.values(components).reduce((a,b)=>a+b,0),components,explanations:[`Funding is ${input.funding.replaceAll('_',' ').toLowerCase()}.`,`Eligibility is ${input.eligibility.replaceAll('_',' ').toLowerCase()}.`,'This is a prioritization score, not an admission probability.']};
+}
+const clamp=(value:number)=>Math.max(0,Math.min(1,value));
+
+export const countryTier=(country:string):1|2|3=>{const key=country.toLowerCase();if(['united states','usa','us','germany'].includes(key))return 1;if(['uae','united arab emirates','saudi arabia','erasmus mundus','china','south korea','japan'].includes(key))return 2;return 3;};
+
+const transitions:Record<ApplicationStatus,ApplicationStatus[]>={DISCOVERED:['RESEARCHING','ARCHIVED'],RESEARCHING:['PROMISING','ARCHIVED'],PROMISING:['PROFESSOR_OUTREACH_READY','APPLICATION_PREPARATION','ARCHIVED'],PROFESSOR_OUTREACH_READY:['PROFESSOR_CONTACTED','APPLICATION_PREPARATION','ARCHIVED'],PROFESSOR_CONTACTED:['PROFESSOR_REPLIED','APPLICATION_PREPARATION','ARCHIVED'],PROFESSOR_REPLIED:['APPLICATION_PREPARATION','REJECTED','ARCHIVED'],APPLICATION_PREPARATION:['APPLICATION_SUBMITTED','ARCHIVED'],APPLICATION_SUBMITTED:['INTERVIEW','OFFER','REJECTED','ARCHIVED'],INTERVIEW:['OFFER','REJECTED','ARCHIVED'],OFFER:['FUNDED_OFFER','REJECTED','ARCHIVED'],FUNDED_OFFER:['ARCHIVED'],REJECTED:['ARCHIVED'],ARCHIVED:[]};
+export const canTransitionApplication=(from:ApplicationStatus,to:ApplicationStatus)=>transitions[from].includes(to);
+
+export const defaultApplicantProfile:ApplicantProfileInput={name:'Abdul Rehman',nationality:'Pakistani',location:'Pakistan',education:[{degree:'BS Computer Science',institution:'University of the People',status:'Completed',cgpa:3.3},{degree:'BS English Language & Literature',institution:'NUML',status:'Completed',cgpa:3.73}],manuscripts:[{title:'Episodic Memory for Iterative Code Repair in a Recursive Reasoning Model: A Mechanistically-Verified Negative Result',status:'MANUSCRIPT'}],background:{summary:'AI engineering and applied AI research; approximately 2–3 years of AI-focused technical project management / AI research; approximately two years of university-level teaching.',productionExperience:['LLMs','RAG','agentic AI','AI automation','APIs','cloud deployment','full-stack systems']},primaryInterests:['Artificial Intelligence','Robotics + AI','Computer Science'],secondaryInterests:['Machine Learning','NLP','LLMs','Recursive/recurrent reasoning models','AI memory systems','Code generation and repair','Model evaluation','Computer Vision','Autonomous systems','Agentic AI','Human-AI Interaction','Computational Linguistics','Multilingual NLP','AI fairness/bias'],countryPriorities:{tier1:['United States','Germany'],tier2:['UAE','Saudi Arabia','Erasmus Mundus / multi-country European programs','China','South Korea','Japan'],tier3:['Australia','New Zealand','Canada','Finland','Sweden','Norway','Netherlands','Switzerland','UK','Italy','Qatar','Other high-quality destinations']}};

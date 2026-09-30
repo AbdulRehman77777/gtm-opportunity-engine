@@ -1,0 +1,10 @@
+import { describe,expect,it } from 'vitest';
+import { canTransitionApplication, classifyFunding, countryTier, evaluateEligibility, normalizeAcademicName, professorIdentity, scoreAcademicOpportunity } from '@gtm/academic';
+
+describe('academic deterministic domain',()=>{
+  it('normalizes university and professor identity consistently',()=>{expect(normalizeAcademicName('The Universität Example')).toBe('example');expect(professorIdentity('u1','Dr. Ada Lovelace')).toBe(professorIdentity('u1','dr ada-lovelace'));});
+  it('does not conflate tuition-free with fully funded',()=>{expect(classifyFunding({tuitionCoverage:'100% tuition waiver'})).toBe('TUITION_FREE_FUNDING_REQUIRED');expect(classifyFunding({tuitionCoverage:'full tuition waiver',stipendAmount:24000})).toBe('CONFIRMED_FULL_FUNDING');expect(classifyFunding({})).toBe('UNKNOWN');});
+  it('keeps uncertain eligibility explicit',()=>{expect(evaluateEligibility([{key:'degree recognition',result:'REVIEW',reason:'No official recognition decision',evidenceIds:[]}]).status).toBe('REVIEW_REQUIRED');expect(evaluateEligibility([{key:'citizenship',result:'UNKNOWN',reason:'Not stated',evidenceIds:[]}]).status).toBe('UNKNOWN');});
+  it('allows funding and fit to outweigh country tier',()=>{const strong=scoreAcademicOpportunity({funding:'CONFIRMED_FULL_FUNDING',eligibility:'ELIGIBLE',researchMatch:1,professorMatch:1,countryTier:3,programQuality:1,directSupervisor:true,deadlineFreshness:1,feasibility:1,contactability:1,evidenceCompleteness:1});const weak=scoreAcademicOpportunity({funding:'SELF_FUNDED',eligibility:'ELIGIBLE',researchMatch:.5,professorMatch:.3,countryTier:1,programQuality:1,directSupervisor:false,deadlineFreshness:1,feasibility:1,contactability:1,evidenceCompleteness:1});expect(strong.total).toBeGreaterThan(weak.total);expect(countryTier('Germany')).toBe(1);});
+  it('guards append-only application transitions',()=>{expect(canTransitionApplication('DISCOVERED','RESEARCHING')).toBe(true);expect(canTransitionApplication('DISCOVERED','FUNDED_OFFER')).toBe(false);});
+});

@@ -5,3 +5,4 @@ export * from './research-repository.js';
 export * from './contact-repository.js';
 export * from './operations-repository.js';
 export * from './final-repository.js';
+export * from './academic-repository.js';

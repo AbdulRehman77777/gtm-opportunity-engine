@@ -311,3 +311,98 @@ export const schedulerLeases = sqliteTable('scheduler_leases', {
 export const backupHistory = sqliteTable('backup_history', {
   id:text('id').primaryKey(), path:text('path').notNull(), sizeBytes:integer('size_bytes'), status:text('status').notNull(), errorJson:text('error_json'), createdAt:text('created_at').notNull(), completedAt:text('completed_at')
 }, table=>[index('idx_backup_history_created').on(table.createdAt)]);
+
+// Northstar Academic Intelligence is deliberately isolated from the GTM funnels.
+// Generic worker_jobs and activities remain shared infrastructure.
+export const academicApplicantProfiles = sqliteTable('academic_applicant_profiles', {
+  id:text('id').primaryKey(), name:text('name').notNull(), nationality:text('nationality').notNull(), location:text('location').notNull(),
+  educationJson:text('education_json').notNull().default('[]'), manuscriptsJson:text('manuscripts_json').notNull().default('[]'), backgroundJson:text('background_json').notNull().default('{}'),
+  primaryInterestsJson:text('primary_interests_json').notNull().default('[]'), secondaryInterestsJson:text('secondary_interests_json').notNull().default('[]'), countryPrioritiesJson:text('country_priorities_json').notNull().default('{}'),
+  active:integer('active',{mode:'boolean'}).notNull().default(true), ...timestamps
+}, table=>[index('idx_academic_profiles_active').on(table.active)]);
+
+export const universities = sqliteTable('universities', {
+  id:text('id').primaryKey(), canonicalName:text('canonical_name').notNull(), normalizedName:text('normalized_name').notNull(), country:text('country').notNull(), city:text('city'), officialUrl:text('official_url'), admissionsUrl:text('admissions_url'), graduateAdmissionsUrl:text('graduate_admissions_url'),
+  tuitionModel:text('tuition_model').notNull().default('UNKNOWN'), applicationFee:text('application_fee'), fundingSummary:text('funding_summary'), englishRequirements:text('english_requirements'), greRequirements:text('gre_requirements'), gpaRequirements:text('gpa_requirements'), degreePrerequisites:text('degree_prerequisites'),
+  internationalEligibility:text('international_eligibility').notNull().default('UNKNOWN'), pakistaniEligibility:text('pakistani_eligibility').notNull().default('UNKNOWN'), confidence:real('confidence').notNull().default(0), firstDiscoveredAt:text('first_discovered_at').notNull(), lastVerifiedAt:text('last_verified_at'), ...timestamps
+}, table=>[uniqueIndex('idx_universities_identity').on(table.normalizedName,table.country),index('idx_universities_country').on(table.country)]);
+
+export const academicDepartments = sqliteTable('academic_departments', {
+  id:text('id').primaryKey(), universityId:text('university_id').notNull().references(()=>universities.id), name:text('name').notNull(), normalizedName:text('normalized_name').notNull(), websiteUrl:text('website_url'), ...timestamps
+}, table=>[uniqueIndex('idx_academic_departments_identity').on(table.universityId,table.normalizedName)]);
+
+export const academicPrograms = sqliteTable('academic_programs', {
+  id:text('id').primaryKey(), universityId:text('university_id').notNull().references(()=>universities.id), departmentId:text('department_id').references(()=>academicDepartments.id), name:text('name').notNull(), normalizedName:text('normalized_name').notNull(), degreeLevel:text('degree_level').notNull(), websiteUrl:text('website_url'), applicationUrl:text('application_url'), duration:text('duration'), requirementsJson:text('requirements_json').notNull().default('{}'), contactProfessorPolicy:text('contact_professor_policy').notNull().default('UNKNOWN'), supervisorApprovalRequired:text('supervisor_approval_required').notNull().default('UNKNOWN'), directBachelorsToPhd:text('direct_bachelors_to_phd').notNull().default('UNKNOWN'), admissionsStatus:text('admissions_status').notNull().default('UNKNOWN'), ...timestamps
+}, table=>[uniqueIndex('idx_academic_programs_identity').on(table.universityId,table.normalizedName,table.degreeLevel)]);
+
+export const researchGroups = sqliteTable('research_groups', {
+  id:text('id').primaryKey(), universityId:text('university_id').notNull().references(()=>universities.id), departmentId:text('department_id').references(()=>academicDepartments.id), name:text('name').notNull(), normalizedName:text('normalized_name').notNull(), websiteUrl:text('website_url'), focusJson:text('focus_json').notNull().default('[]'), ...timestamps
+}, table=>[uniqueIndex('idx_research_groups_identity').on(table.universityId,table.normalizedName)]);
+
+export const professors = sqliteTable('professors', {
+  id:text('id').primaryKey(), universityId:text('university_id').notNull().references(()=>universities.id), departmentId:text('department_id').references(()=>academicDepartments.id), researchGroupId:text('research_group_id').references(()=>researchGroups.id), fullName:text('full_name').notNull(), normalizedName:text('normalized_name').notNull(), title:text('title'), officialProfileUrl:text('official_profile_url'), labUrl:text('lab_url'), scholarUrl:text('scholar_url'), orcid:text('orcid'), publicEmail:text('public_email'), contactJson:text('contact_json').notNull().default('{}'), researchAreasJson:text('research_areas_json').notNull().default('[]'), summary:text('summary'), recentWorksJson:text('recent_works_json').notNull().default('[]'), projectsJson:text('projects_json').notNull().default('[]'), grantsJson:text('grants_json').notNull().default('[]'), supervisionEvidence:text('supervision_evidence'), recruitingEvidence:text('recruiting_evidence'), openPositionsJson:text('open_positions_json').notNull().default('[]'), firstDiscoveredAt:text('first_discovered_at').notNull(), lastVerifiedAt:text('last_verified_at'), ...timestamps
+}, table=>[uniqueIndex('idx_professors_identity').on(table.universityId,table.normalizedName),index('idx_professors_email').on(table.publicEmail)]);
+
+export const academicSources = sqliteTable('academic_sources', {
+  id:text('id').primaryKey(), kind:text('kind').notNull(), name:text('name').notNull(), url:text('url').notNull(), canonicalUrl:text('canonical_url').notNull(), entityType:text('entity_type'), entityId:text('entity_id'), official:integer('official',{mode:'boolean'}).notNull().default(false), enabled:integer('enabled',{mode:'boolean'}).notNull().default(true), refreshIntervalHours:integer('refresh_interval_hours').notNull().default(168), lastRetrievedAt:text('last_retrieved_at'), nextRefreshAt:text('next_refresh_at'), lastContentHash:text('last_content_hash'), lastStatus:text('last_status').notNull().default('NEW'), metadataJson:text('metadata_json').notNull().default('{}'), ...timestamps
+}, table=>[uniqueIndex('idx_academic_sources_url').on(table.canonicalUrl),index('idx_academic_sources_refresh').on(table.enabled,table.nextRefreshAt)]);
+
+export const academicResearchRuns = sqliteTable('academic_research_runs', {
+  id:text('id').primaryKey(), sourceId:text('source_id').references(()=>academicSources.id), entityType:text('entity_type'), entityId:text('entity_id'), trigger:text('trigger').notNull(), status:text('status').notNull(), startedAt:text('started_at'), completedAt:text('completed_at'), changed:integer('changed',{mode:'boolean'}).notNull().default(false), errorJson:text('error_json'), ...timestamps
+}, table=>[index('idx_academic_runs_entity').on(table.entityType,table.entityId,table.createdAt)]);
+
+export const academicPageVersions = sqliteTable('academic_page_versions', {
+  id:text('id').primaryKey(), sourceId:text('source_id').notNull().references(()=>academicSources.id), researchRunId:text('research_run_id').references(()=>academicResearchRuns.id), contentHash:text('content_hash').notNull(), title:text('title'), textContent:text('text_content').notNull(), httpStatus:integer('http_status'), retrievedAt:text('retrieved_at').notNull(), metadataJson:text('metadata_json').notNull().default('{}'), createdAt:text('created_at').notNull()
+}, table=>[uniqueIndex('idx_academic_page_versions_hash').on(table.sourceId,table.contentHash),index('idx_academic_page_versions_time').on(table.sourceId,table.retrievedAt)]);
+
+export const academicEvidence = sqliteTable('academic_evidence', {
+  id:text('id').primaryKey(), sourceId:text('source_id').notNull().references(()=>academicSources.id), pageVersionId:text('page_version_id').references(()=>academicPageVersions.id), entityType:text('entity_type').notNull(), entityId:text('entity_id').notNull(), claimType:text('claim_type').notNull(), claim:text('claim').notNull(), excerpt:text('excerpt'), sourceUrl:text('source_url').notNull(), classification:text('classification').notNull().default('FACT'), confidence:real('confidence').notNull(), observedAt:text('observed_at').notNull(), createdAt:text('created_at').notNull()
+}, table=>[index('idx_academic_evidence_entity').on(table.entityType,table.entityId,table.claimType),uniqueIndex('idx_academic_evidence_identity').on(table.entityType,table.entityId,table.claimType,table.sourceUrl,table.claim)]);
+
+export const fundingOpportunities = sqliteTable('funding_opportunities', {
+  id:text('id').primaryKey(), universityId:text('university_id').references(()=>universities.id), programId:text('program_id').references(()=>academicPrograms.id), name:text('name').notNull(), category:text('category').notNull().default('UNKNOWN'), tuitionCoverage:text('tuition_coverage'), stipendAmount:real('stipend_amount'), stipendCurrency:text('stipend_currency'), stipendPeriod:text('stipend_period'), accommodation:text('accommodation'), healthInsurance:text('health_insurance'), travel:text('travel'), researchAllowance:text('research_allowance'), assistantship:text('assistantship'), employmentContract:text('employment_contract'), duration:text('duration'), conditions:text('conditions'), officialSourceUrl:text('official_source_url'), deadline:text('deadline'), ...timestamps
+}, table=>[index('idx_funding_category').on(table.category),index('idx_funding_deadline').on(table.deadline)]);
+
+export const scholarships = sqliteTable('scholarships', {
+  id:text('id').primaryKey(), fundingOpportunityId:text('funding_opportunity_id').notNull().references(()=>fundingOpportunities.id), provider:text('provider'), countriesJson:text('countries_json').notNull().default('[]'), citizenshipRestrictions:text('citizenship_restrictions'), ageRestrictions:text('age_restrictions'), applicationUrl:text('application_url'), ...timestamps
+});
+
+export const academicOpportunities = sqliteTable('academic_opportunities', {
+  id:text('id').primaryKey(), universityId:text('university_id').notNull().references(()=>universities.id), programId:text('program_id').references(()=>academicPrograms.id), fundingOpportunityId:text('funding_opportunity_id').references(()=>fundingOpportunities.id), title:text('title').notNull(), normalizedTitle:text('normalized_title').notNull(), degreeLevel:text('degree_level').notNull(), country:text('country').notNull(), deadline:text('deadline'), status:text('status').notNull().default('DISCOVERED'), fundingCategory:text('funding_category').notNull().default('UNKNOWN'), eligibilityStatus:text('eligibility_status').notNull().default('UNKNOWN'), currentScore:integer('current_score').notNull().default(0), sourceUrl:text('source_url'), researchFreshness:text('research_freshness').notNull().default('UNKNOWN'), notes:text('notes'), firstDiscoveredAt:text('first_discovered_at').notNull(), lastVerifiedAt:text('last_verified_at'), ...timestamps
+}, table=>[uniqueIndex('idx_academic_opportunity_identity').on(table.universityId,table.normalizedTitle,table.degreeLevel),index('idx_academic_opportunity_rank').on(table.status,table.currentScore)]);
+
+export const professorCases = sqliteTable('professor_cases', {
+  id:text('id').primaryKey(), professorId:text('professor_id').notNull().references(()=>professors.id), opportunityId:text('opportunity_id').references(()=>academicOpportunities.id), status:text('status').notNull().default('RESEARCHING'), matchSummary:text('match_summary'), matchingSkillsJson:text('matching_skills_json').notNull().default('[]'), matchingInterestsJson:text('matching_interests_json').notNull().default('[]'), matchingExperienceJson:text('matching_experience_json').notNull().default('[]'), researchIdeasJson:text('research_ideas_json').notNull().default('[]'), weaknessesJson:text('weaknesses_json').notNull().default('[]'), matchConfidence:real('match_confidence').notNull().default(0), notes:text('notes'), ...timestamps
+}, table=>[uniqueIndex('idx_professor_cases_identity').on(table.professorId,table.opportunityId),index('idx_professor_cases_status').on(table.status)]);
+
+export const eligibilityChecks = sqliteTable('eligibility_checks', {
+  id:text('id').primaryKey(), opportunityId:text('opportunity_id').notNull().references(()=>academicOpportunities.id), applicantProfileId:text('applicant_profile_id').notNull().references(()=>academicApplicantProfiles.id), status:text('status').notNull(), criteriaJson:text('criteria_json').notNull(), reasonsJson:text('reasons_json').notNull(), evidenceIdsJson:text('evidence_ids_json').notNull().default('[]'), rulesVersion:text('rules_version').notNull(), createdAt:text('created_at').notNull()
+}, table=>[index('idx_eligibility_opportunity_time').on(table.opportunityId,table.createdAt)]);
+
+export const academicScoreSnapshots = sqliteTable('academic_score_snapshots', {
+  id:text('id').primaryKey(), opportunityId:text('opportunity_id').notNull().references(()=>academicOpportunities.id), total:integer('total').notNull(), componentsJson:text('components_json').notNull(), explanationsJson:text('explanations_json').notNull(), evidenceIdsJson:text('evidence_ids_json').notNull().default('[]'), modelVersion:text('model_version').notNull(), createdAt:text('created_at').notNull()
+}, table=>[index('idx_academic_scores_opportunity_time').on(table.opportunityId,table.createdAt)]);
+
+export const applicationCases = sqliteTable('application_cases', {
+  id:text('id').primaryKey(), opportunityId:text('opportunity_id').notNull().references(()=>academicOpportunities.id), status:text('status').notNull().default('DISCOVERED'), currentStep:text('current_step'), applicationUrl:text('application_url'), submittedAt:text('submitted_at'), decisionAt:text('decision_at'), notes:text('notes'), ...timestamps
+}, table=>[uniqueIndex('idx_application_cases_opportunity').on(table.opportunityId),index('idx_application_cases_status').on(table.status)]);
+
+export const applicationDeadlines = sqliteTable('application_deadlines', {
+  id:text('id').primaryKey(), opportunityId:text('opportunity_id').notNull().references(()=>academicOpportunities.id), kind:text('kind').notNull(), deadlineAt:text('deadline_at').notNull(), timezone:text('timezone'), sourceUrl:text('source_url'), confidence:real('confidence').notNull(), status:text('status').notNull().default('ACTIVE'), ...timestamps
+}, table=>[index('idx_application_deadlines_due').on(table.status,table.deadlineAt)]);
+
+export const academicDocuments = sqliteTable('academic_documents', {
+  id:text('id').primaryKey(), applicantProfileId:text('applicant_profile_id').notNull().references(()=>academicApplicantProfiles.id), kind:text('kind').notNull(), name:text('name').notNull(), storageKey:text('storage_key').notNull(), originalFilename:text('original_filename').notNull(), mimeType:text('mime_type').notNull(), sizeBytes:integer('size_bytes').notNull(), sha256:text('sha256').notNull(), version:integer('version').notNull().default(1), active:integer('active',{mode:'boolean'}).notNull().default(true), metadataJson:text('metadata_json').notNull().default('{}'), ...timestamps
+}, table=>[uniqueIndex('idx_academic_documents_storage').on(table.storageKey),index('idx_academic_documents_profile_kind').on(table.applicantProfileId,table.kind)]);
+
+export const academicOutreach = sqliteTable('academic_outreach', {
+  id:text('id').primaryKey(), professorCaseId:text('professor_case_id').notNull().references(()=>professorCases.id), opportunityId:text('opportunity_id').references(()=>academicOpportunities.id), recipientEmail:text('recipient_email'), subjectsJson:text('subjects_json').notNull().default('[]'), textBody:text('text_body').notNull(), status:text('status').notNull().default('DRAFT'), selectedDocumentIdsJson:text('selected_document_ids_json').notNull().default('[]'), evidenceIdsJson:text('evidence_ids_json').notNull().default('[]'), idempotencyKey:text('idempotency_key').notNull(), approvedAt:text('approved_at'), sentAt:text('sent_at'), providerMessageId:text('provider_message_id'), replyStatus:text('reply_status').notNull().default('NONE'), followupAt:text('followup_at'), errorJson:text('error_json'), ...timestamps
+}, table=>[uniqueIndex('idx_academic_outreach_idempotency').on(table.idempotencyKey),index('idx_academic_outreach_status').on(table.status,table.followupAt)]);
+
+export const academicSignals = sqliteTable('academic_signals', {
+  id:text('id').primaryKey(), opportunityId:text('opportunity_id').references(()=>academicOpportunities.id), professorCaseId:text('professor_case_id').references(()=>professorCases.id), type:text('type').notNull(), claim:text('claim').notNull(), severity:text('severity').notNull(), confidence:real('confidence').notNull(), evidenceIdsJson:text('evidence_ids_json').notNull().default('[]'), active:integer('active',{mode:'boolean'}).notNull().default(true), observedAt:text('observed_at').notNull(), createdAt:text('created_at').notNull()
+}, table=>[index('idx_academic_signals_opportunity').on(table.opportunityId,table.active)]);
+
+export const academicWatchlists = sqliteTable('academic_watchlists', {
+  id:text('id').primaryKey(), name:text('name').notNull(), queryJson:text('query_json').notNull(), enabled:integer('enabled',{mode:'boolean'}).notNull().default(true), refreshIntervalHours:integer('refresh_interval_hours').notNull().default(168), lastRunAt:text('last_run_at'), nextRunAt:text('next_run_at'), ...timestamps
+});
