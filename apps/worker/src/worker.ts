@@ -1467,6 +1467,8 @@ function isAcceptableAcademicSource(value: string) {
 }
 function classifyFundingFromPage(text: string) {
   const value = text.toLowerCase();
+  if (/fully[- ]funded|full financial support/.test(value))
+    return "CONFIRMED_FULL_FUNDING";
   const tuition =
     /(full tuition|tuition (?:is )?(?:covered|waived)|tuition waiver|no tuition fee)/.test(
       value,
@@ -1496,6 +1498,10 @@ function relevantExcerpt(text: string, needle: string) {
 function fallbackAcademicCandidates(countries:string[]){const all=countries.includes("All Countries")||countries.length===0;return[
   {universityName:"Stanford University",country:"United States",programTitle:"Computer Science PhD",degreeLevel:"PHD" as const,officialUrl:"https://www.cs.stanford.edu/phd-program-overview/funding"},
   {universityName:"Massachusetts Institute of Technology",country:"United States",programTitle:"EECS PhD",degreeLevel:"PHD" as const,officialUrl:"https://www.eecs.mit.edu/academics/graduate-programs/admission-process/graduate-admissions-faqs/"},
+  {universityName:"Max Planck Graduate Center for Computer and Information Science",country:"Germany",programTitle:"CS@max planck Doctoral Program",degreeLevel:"PHD" as const,officialUrl:"https://www.cis.mpg.de/csmaxplanck-overview/"},
+  {universityName:"Technical University of Munich",country:"Germany",programTitle:"PhD in Visual Computing and Artificial Intelligence",degreeLevel:"PHD" as const,officialUrl:"https://application.vc.in.tum.de/"},
+  {universityName:"Technical University of Munich",country:"Germany",programTitle:"Computer Vision and Artificial Intelligence PhD Positions",degreeLevel:"PHD" as const,officialUrl:"https://cvai.cit.tum.de/jobs/advert"},
+  {universityName:"Technical University of Munich",country:"Germany",programTitle:"Doctoral Research Associate in Software Engineering and AI",degreeLevel:"PHD" as const,officialUrl:"https://www.cs.cit.tum.de/en/seai/open-positions/"},
 ].filter(candidate=>all||countries.includes(candidate.country));}
 function groundAcademicOutput<T>(output: T, validIds: Set<string>): T {
   const visit = (item: unknown) => {
