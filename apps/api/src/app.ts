@@ -1,7 +1,7 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import { ZodError, z } from 'zod';
-import { OllamaProvider, type AIProvider } from '@gtm/ai';
+import { createAIProvider, getAIHealthReport, OllamaProvider, type AIProvider } from '@gtm/ai';
 import { AcademicRepository, ContactRepository, createDatabase, FinalRepository, GtmRepository, OperationsRepository, ResearchRepository, type DatabaseConnection } from '@gtm/db';
 import { ImapInboxProvider, SMTPProvider } from '@gtm/email';
 import { loadConfig, manualImportSchema, sourceKindSchema, sourceRunRequestSchema } from '@gtm/shared';
@@ -22,7 +22,8 @@ export async function buildApp(options: { connection?: DatabaseConnection; logge
   const operationsRepository = new OperationsRepository(connection);
   const finalRepository=new FinalRepository(connection);
   const academicRepository=new AcademicRepository(connection);
-  const aiProvider = options.aiProvider ?? new OllamaProvider(config.OLLAMA_BASE_URL, config.OLLAMA_MODEL);
+  const aiProvider = options.aiProvider ?? createAIProvider(config);
+  const ollamaProvider = new OllamaProvider(config.OLLAMA_BASE_URL,config.OLLAMA_MODEL);
   const smtpProvider=new SMTPProvider({host:config.SMTP_HOST,port:config.SMTP_PORT,secure:config.SMTP_SECURE,user:config.SMTP_USER,password:config.SMTP_PASSWORD});
   const imapProvider=new ImapInboxProvider({host:config.IMAP_HOST,port:config.IMAP_PORT,secure:config.IMAP_SECURE,user:config.IMAP_USER,password:config.IMAP_PASSWORD});
   const app = Fastify({ logger: options.logger === false ? false : { level: config.LOG_LEVEL } });
@@ -40,7 +41,8 @@ export async function buildApp(options: { connection?: DatabaseConnection; logge
   app.get('/health', async () => ({ status: 'ok', service: 'api', timestamp: new Date().toISOString() }));
   app.get('/health/db', async () => ({ status: connection.sqlite.prepare('SELECT 1 AS ok').get() ? 'ok' : 'error' }));
   app.get('/health/workers', async () => ({ status: 'ok', queue: connection.sqlite.prepare(`SELECT status, COUNT(*) count FROM worker_jobs GROUP BY status`).all() }));
-  app.get('/health/ollama', async () => aiProvider.healthCheck());
+  app.get('/health/ollama', async () => ollamaProvider.healthCheck());
+  app.get('/health/ai', async () => getAIHealthReport(aiProvider));
   app.get('/health/smtp', async () => config.SMTP_HOST ? smtpProvider.healthCheck() : {status:'misconfigured',detail:'SMTP_HOST is not configured'});
   app.get('/health/imap', async () => config.IMAP_HOST ? imapProvider.healthCheck() : {status:'misconfigured',detail:'IMAP_HOST is not configured'});
   app.get('/health/scheduler',async()=>finalRepository.schedulerHealth());

@@ -8,3 +8,6 @@ export interface AIProvider {
   healthCheck(): Promise<AIHealth>;
   modelInfo(): { provider: string; model: string; baseUrl: string };
 }
+export class AIProviderError extends Error {
+  constructor(message:string,readonly code:'MISCONFIGURED'|'AUTH'|'RATE_LIMITED'|'TIMEOUT'|'UPSTREAM'|'INVALID_RESPONSE',readonly provider:string,readonly retryAfterMs?:number){super(message);this.name='AIProviderError';}
+}
