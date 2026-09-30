@@ -141,7 +141,7 @@ export const companyProfiles = sqliteTable('company_profiles', {
 export const aiRuns = sqliteTable('ai_runs', {
   id: text('id').primaryKey(), companyId: text('company_id').references(() => companies.id), researchRunId: text('research_run_id').references(() => companyResearchRuns.id), task: text('task').notNull(), provider: text('provider').notNull(), model: text('model').notNull(),
   promptVersion: text('prompt_version').notNull(), inputHash: text('input_hash').notNull(), inputJson: text('input_json').notNull(), outputJson: text('output_json'), status: text('status').notNull(), latencyMs: integer('latency_ms').notNull(), promptTokens: integer('prompt_tokens'), completionTokens: integer('completion_tokens'),
-  errorJson: text('error_json'), createdAt: text('created_at').notNull()
+  errorJson: text('error_json'), entityType:text('entity_type'), entityId:text('entity_id'), expiresAt:text('expires_at'), createdAt: text('created_at').notNull()
 }, (table) => [index('idx_ai_runs_company_task').on(table.companyId, table.task, table.createdAt), index('idx_ai_runs_input').on(table.task, table.inputHash, table.status)]);
 
 export const contactResearchRuns = sqliteTable('contact_research_runs', {

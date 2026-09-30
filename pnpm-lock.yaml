@@ -137,6 +137,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@gtm/academic':
+        specifier: workspace:*
+        version: link:../../packages/academic
       '@gtm/ai':
         specifier: workspace:*
         version: link:../../packages/ai
