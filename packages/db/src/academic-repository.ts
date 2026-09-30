@@ -285,16 +285,16 @@ export class AcademicRepository {
     this.db
       .update(academicSearches)
       .set({
-        status: sources.length ? "RESEARCHING_SOURCES" : "COMPLETED",
+        status: "COMPLETED",
         resultCount: results.length,
-        completedAt: sources.length ? null : now(),
+        completedAt: now(),
         updatedAt: now(),
       })
       .where(eq(academicSearches.id, searchId))
       .run();
     return {
       searchId,
-      status: sources.length ? "RESEARCHING_SOURCES" : "COMPLETED",
+      status: "COMPLETED",
       sourcesQueued: sources.length,
       resultCount: results.length,
     };
