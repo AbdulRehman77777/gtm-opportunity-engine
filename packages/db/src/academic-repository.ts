@@ -1,91 +1,1831 @@
-import { randomUUID } from 'node:crypto';
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
-import { academicSearchFiltersSchema, applicantProfileInputSchema, applicationStatusSchema, canTransitionApplication, countryTier, defaultAcademicSearchFilters, defaultApplicantProfile, evaluateEligibility, normalizeAcademicName, scoreAcademicOpportunity, type AcademicSearchFilters, type ApplicantProfileInput, type EligibilityCriterion } from '@gtm/academic';
-import { contentHash } from '@gtm/shared';
-import type { DatabaseConnection } from './client.js';
-import { academicApplicantProfiles, academicDocuments, academicEvidence, academicOpportunities, academicOutreach, academicPageVersions, academicPrograms, academicResearchRuns, academicScoreSnapshots, academicSearches, academicShortlist, academicSources, activities, aiRuns, applicationCases, applicationDeadlines, eligibilityChecks, fundingOpportunities, professorCases, professors, settings, universities } from './schema.js';
+import { randomUUID } from "node:crypto";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
+import {
+  academicSearchFiltersSchema,
+  applicantProfileInputSchema,
+  applicationStatusSchema,
+  canTransitionApplication,
+  countryTier,
+  defaultAcademicSearchFilters,
+  defaultApplicantProfile,
+  evaluateEligibility,
+  normalizeAcademicName,
+  scoreAcademicOpportunity,
+  type AcademicSearchFilters,
+  type ApplicantProfileInput,
+  type EligibilityCriterion,
+} from "@gtm/academic";
+import { contentHash } from "@gtm/shared";
+import type { DatabaseConnection } from "./client.js";
+import {
+  academicApplicantProfiles,
+  academicDocuments,
+  academicEvidence,
+  academicOpportunities,
+  academicOutreach,
+  academicPageVersions,
+  academicPrograms,
+  academicResearchRuns,
+  academicScoreSnapshots,
+  academicSearches,
+  academicShortlist,
+  academicSources,
+  activities,
+  aiRuns,
+  applicationCases,
+  applicationDeadlines,
+  eligibilityChecks,
+  fundingOpportunities,
+  professorCases,
+  professors,
+  settings,
+  universities,
+} from "./schema.js";
 
-const now=()=>new Date().toISOString();
-const parse=<T>(value:string):T=>JSON.parse(value) as T;
+const now = () => new Date().toISOString();
+const parse = <T>(value: string): T => JSON.parse(value) as T;
 
-export class AcademicRepository{
-  constructor(private readonly connection:DatabaseConnection){}
-  get db(){return this.connection.db;}
+export class AcademicRepository {
+  constructor(private readonly connection: DatabaseConnection) {}
+  get db() {
+    return this.connection.db;
+  }
 
-  ensureDefaultProfile(){const current=this.db.select().from(academicApplicantProfiles).where(eq(academicApplicantProfiles.active,true)).get();return current?this.profile(current):this.saveProfile(defaultApplicantProfile);}
-  getProfile(){const row=this.db.select().from(academicApplicantProfiles).where(eq(academicApplicantProfiles.active,true)).get();return row?this.profile(row):null;}
-  saveProfile(input:ApplicantProfileInput){const value=applicantProfileInputSchema.parse(input);const timestamp=now();const existing=this.db.select().from(academicApplicantProfiles).where(eq(academicApplicantProfiles.active,true)).get();
-    if(existing){this.db.update(academicApplicantProfiles).set({name:value.name,nationality:value.nationality,location:value.location,educationJson:JSON.stringify(value.education),manuscriptsJson:JSON.stringify(value.manuscripts),backgroundJson:JSON.stringify(value.background),primaryInterestsJson:JSON.stringify(value.primaryInterests),secondaryInterestsJson:JSON.stringify(value.secondaryInterests),countryPrioritiesJson:JSON.stringify(value.countryPriorities),updatedAt:timestamp}).where(eq(academicApplicantProfiles.id,existing.id)).run();return this.getProfile()!;}
-    const id=randomUUID();this.db.insert(academicApplicantProfiles).values({id,name:value.name,nationality:value.nationality,location:value.location,educationJson:JSON.stringify(value.education),manuscriptsJson:JSON.stringify(value.manuscripts),backgroundJson:JSON.stringify(value.background),primaryInterestsJson:JSON.stringify(value.primaryInterests),secondaryInterestsJson:JSON.stringify(value.secondaryInterests),countryPrioritiesJson:JSON.stringify(value.countryPriorities),createdAt:timestamp,updatedAt:timestamp}).run();return this.getProfile()!;}
-  private profile(row:typeof academicApplicantProfiles.$inferSelect){return{id:row.id,name:row.name,nationality:row.nationality,location:row.location,education:parse(row.educationJson),manuscripts:parse(row.manuscriptsJson),background:parse(row.backgroundJson),primaryInterests:parse(row.primaryInterestsJson),secondaryInterests:parse(row.secondaryInterestsJson),countryPriorities:parse(row.countryPrioritiesJson),updatedAt:row.updatedAt};}
+  ensureDefaultProfile() {
+    const current = this.db
+      .select()
+      .from(academicApplicantProfiles)
+      .where(eq(academicApplicantProfiles.active, true))
+      .get();
+    return current
+      ? this.profile(current)
+      : this.saveProfile(defaultApplicantProfile);
+  }
+  getProfile() {
+    const row = this.db
+      .select()
+      .from(academicApplicantProfiles)
+      .where(eq(academicApplicantProfiles.active, true))
+      .get();
+    return row ? this.profile(row) : null;
+  }
+  saveProfile(input: ApplicantProfileInput) {
+    const value = applicantProfileInputSchema.parse(input);
+    const timestamp = now();
+    const existing = this.db
+      .select()
+      .from(academicApplicantProfiles)
+      .where(eq(academicApplicantProfiles.active, true))
+      .get();
+    if (existing) {
+      this.db
+        .update(academicApplicantProfiles)
+        .set({
+          name: value.name,
+          nationality: value.nationality,
+          location: value.location,
+          educationJson: JSON.stringify(value.education),
+          manuscriptsJson: JSON.stringify(value.manuscripts),
+          backgroundJson: JSON.stringify(value.background),
+          primaryInterestsJson: JSON.stringify(value.primaryInterests),
+          secondaryInterestsJson: JSON.stringify(value.secondaryInterests),
+          countryPrioritiesJson: JSON.stringify(value.countryPriorities),
+          updatedAt: timestamp,
+        })
+        .where(eq(academicApplicantProfiles.id, existing.id))
+        .run();
+      return this.getProfile()!;
+    }
+    const id = randomUUID();
+    this.db
+      .insert(academicApplicantProfiles)
+      .values({
+        id,
+        name: value.name,
+        nationality: value.nationality,
+        location: value.location,
+        educationJson: JSON.stringify(value.education),
+        manuscriptsJson: JSON.stringify(value.manuscripts),
+        backgroundJson: JSON.stringify(value.background),
+        primaryInterestsJson: JSON.stringify(value.primaryInterests),
+        secondaryInterestsJson: JSON.stringify(value.secondaryInterests),
+        countryPrioritiesJson: JSON.stringify(value.countryPriorities),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+    return this.getProfile()!;
+  }
+  private profile(row: typeof academicApplicantProfiles.$inferSelect) {
+    return {
+      id: row.id,
+      name: row.name,
+      nationality: row.nationality,
+      location: row.location,
+      education: parse(row.educationJson),
+      manuscripts: parse(row.manuscriptsJson),
+      background: parse(row.backgroundJson),
+      primaryInterests: parse(row.primaryInterestsJson),
+      secondaryInterests: parse(row.secondaryInterestsJson),
+      countryPriorities: parse(row.countryPrioritiesJson),
+      updatedAt: row.updatedAt,
+    };
+  }
 
-  getSearchPreferences(){const row=this.db.select().from(settings).where(eq(settings.key,'academic.search.preferences')).get();return row?academicSearchFiltersSchema.parse(parse(row.valueJson)):defaultAcademicSearchFilters;}
-  saveSearchPreferences(filters:AcademicSearchFilters){const value=academicSearchFiltersSchema.parse(filters),timestamp=now();this.db.insert(settings).values({key:'academic.search.preferences',valueJson:JSON.stringify(value),updatedAt:timestamp}).onConflictDoUpdate({target:settings.key,set:{valueJson:JSON.stringify(value),updatedAt:timestamp}}).run();return value;}
-  createAcademicSearch(filters:AcademicSearchFilters){const value=this.saveSearchPreferences(filters),profile=this.ensureDefaultProfile(),timestamp=now(),id=randomUUID();this.db.insert(academicSearches).values({id,applicantProfileId:profile.id,filtersJson:JSON.stringify(value),status:'QUEUED',createdAt:timestamp,updatedAt:timestamp}).run();const job=this.enqueue('RUN_ACADEMIC_SEARCH',{searchId:id},`academic-search:${id}`,90);return{search:this.getAcademicSearch(id),job};}
-  getAcademicSearch(id:string){const row=this.db.select().from(academicSearches).where(eq(academicSearches.id,id)).get();return row?{...row,filters:parse<AcademicSearchFilters>(row.filtersJson),filtersJson:undefined}:null;}
-  listAcademicSearches(limit=8){return this.db.select().from(academicSearches).orderBy(desc(academicSearches.createdAt)).limit(limit).all().map(row=>({...row,filters:parse<AcademicSearchFilters>(row.filtersJson),filtersJson:undefined}));}
-  runAcademicSearch(searchId:string){const search=this.getAcademicSearch(searchId);if(!search)throw new Error('Academic search not found');const timestamp=now();this.db.update(academicSearches).set({status:'RUNNING',startedAt:timestamp,updatedAt:timestamp}).where(eq(academicSearches.id,searchId)).run();const sources=this.db.select().from(academicSources).where(eq(academicSources.enabled,true)).all();for(const source of sources)this.enqueue('RESEARCH_ACADEMIC_URL',{sourceId:source.id},`academic-search-source:${searchId}:${source.id}`,70);const results=this.filterOpportunities(search.filters);for(const item of results.slice(0,25))this.queueAcademicAi('ANALYZE_ACADEMIC_OPPORTUNITY_AI',String(item.id));this.db.update(academicSearches).set({status:sources.length?'RESEARCHING_SOURCES':'COMPLETED',resultCount:results.length,completedAt:sources.length?null:now(),updatedAt:now()}).where(eq(academicSearches.id,searchId)).run();return{searchId,status:sources.length?'RESEARCHING_SOURCES':'COMPLETED',sourcesQueued:sources.length,resultCount:results.length};}
-  filterOpportunities(filters:AcademicSearchFilters){const rows=this.listOpportunities(500) as Array<Record<string,unknown>>;const degreeMap:Record<string,string[]>={PHD:['PHD'],MS_MSC:['MASTERS','MS','MSC'],MS_TO_PHD:['MS_PHD'],RESEARCH_MASTERS:['RESEARCH_MASTERS'],RESEARCH_FELLOWSHIP:['FELLOWSHIP','RESEARCH'],GRADUATE_RESEARCH:['GRADUATE_RESEARCH','RESEARCH'],ANY:[]};const fundingMap:Record<string,string[]>={FULLY_FUNDED:['CONFIRMED_FULL_FUNDING'],TUITION_STIPEND:['CONFIRMED_FULL_FUNDING'],TUITION_FREE:['TUITION_FREE_FUNDING_REQUIRED'],PARTIAL:['PARTIAL_FUNDING'],AVAILABLE:['CONFIRMED_FULL_FUNDING','TUITION_FREE_FUNDING_REQUIRED','PARTIAL_FUNDING','POTENTIAL_FUNDING_UNCONFIRMED'],UNKNOWN:['UNKNOWN'],ANY:[]};const countries=new Set(filters.countries.map(value=>value.toLowerCase()));const nowMs=Date.now();return rows.filter(row=>{const text=`${row.title} ${row.university_name} ${row.country}`.toLowerCase(),status=String(row.status),eligibility=String(row.eligibility_status),funding=String(row.funding_category),deadline=row.deadline?Date.parse(String(row.deadline)):null;const statusMatch=filters.status==='ALL'||(filters.status==='BEST_MATCHES'&&Number(row.current_score)>=75)||(filters.status==='FULLY_FUNDED'&&funding==='CONFIRMED_FULL_FUNDING')||(filters.status==='ELIGIBLE'&&['ELIGIBLE','LIKELY_ELIGIBLE'].includes(eligibility))||(filters.status==='NEEDS_REVIEW'&&['REVIEW_REQUIRED','UNKNOWN'].includes(eligibility))||(filters.status==='DEADLINE_SOON'&&deadline!==null&&deadline>=nowMs&&deadline-nowMs<=45*86400000)||(filters.status==='OUTREACH_READY'&&status==='PROFESSOR_OUTREACH_READY')||(filters.status==='APPLIED'&&['APPLICATION_SUBMITTED','INTERVIEW','OFFER','FUNDED_OFFER'].includes(status))||filters.status==='PROFESSOR_FOUND'||filters.status==='SAVED';return statusMatch&&(!countries.size||filters.countries.includes('All Countries')||countries.has(String(row.country).toLowerCase()))&&(!degreeMap[filters.degree]?.length||degreeMap[filters.degree]!.includes(String(row.degree_level).toUpperCase()))&&(!fundingMap[filters.funding]?.length||fundingMap[filters.funding]!.includes(funding))&&(!filters.keyword||text.includes(filters.keyword.toLowerCase()))&&(!filters.researchAreas.length||filters.researchAreas.some(area=>text.includes(area.toLowerCase())));}).sort((a,b)=>filters.sort==='DEADLINE'?String(a.deadline??'9999').localeCompare(String(b.deadline??'9999')):filters.sort==='COUNTRY'?String(a.country).localeCompare(String(b.country)):filters.sort==='NEWEST'?String(b.first_discovered_at).localeCompare(String(a.first_discovered_at)):Number(b.current_score)-Number(a.current_score));}
-  saveToShortlist(entityType:'OPPORTUNITY'|'UNIVERSITY'|'PROFESSOR',entityId:string){const timestamp=now();this.db.insert(academicShortlist).values({id:randomUUID(),entityType,entityId,createdAt:timestamp,updatedAt:timestamp}).onConflictDoNothing().run();return{saved:true,entityType,entityId};}
-  removeFromShortlist(entityType:string,entityId:string){this.db.delete(academicShortlist).where(and(eq(academicShortlist.entityType,entityType),eq(academicShortlist.entityId,entityId))).run();return{saved:false,entityType,entityId};}
-  listShortlist(){const rows=this.db.select().from(academicShortlist).orderBy(desc(academicShortlist.createdAt)).all();return rows.map(row=>({...row,entity:row.entityType==='OPPORTUNITY'?this.getOpportunity(row.entityId):row.entityType==='UNIVERSITY'?this.getUniversity(row.entityId):this.getProfessor(row.entityId)}));}
+  getSearchPreferences() {
+    const row = this.db
+      .select()
+      .from(settings)
+      .where(eq(settings.key, "academic.search.preferences"))
+      .get();
+    return row
+      ? academicSearchFiltersSchema.parse(parse(row.valueJson))
+      : defaultAcademicSearchFilters;
+  }
+  saveSearchPreferences(filters: AcademicSearchFilters) {
+    const value = academicSearchFiltersSchema.parse(filters),
+      timestamp = now();
+    this.db
+      .insert(settings)
+      .values({
+        key: "academic.search.preferences",
+        valueJson: JSON.stringify(value),
+        updatedAt: timestamp,
+      })
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: { valueJson: JSON.stringify(value), updatedAt: timestamp },
+      })
+      .run();
+    return value;
+  }
+  createAcademicSearch(filters: AcademicSearchFilters) {
+    const value = this.saveSearchPreferences(filters),
+      profile = this.ensureDefaultProfile(),
+      timestamp = now(),
+      id = randomUUID();
+    this.db
+      .insert(academicSearches)
+      .values({
+        id,
+        applicantProfileId: profile.id,
+        filtersJson: JSON.stringify(value),
+        status: "QUEUED",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+    const job = this.enqueue(
+      "RUN_ACADEMIC_SEARCH",
+      { searchId: id },
+      `academic-search:${id}`,
+      90,
+    );
+    return { search: this.getAcademicSearch(id), job };
+  }
+  getAcademicSearch(id: string) {
+    const row = this.db
+      .select()
+      .from(academicSearches)
+      .where(eq(academicSearches.id, id))
+      .get();
+    return row
+      ? {
+          ...row,
+          filters: parse<AcademicSearchFilters>(row.filtersJson),
+          filtersJson: undefined,
+        }
+      : null;
+  }
+  listAcademicSearches(limit = 8) {
+    return this.db
+      .select()
+      .from(academicSearches)
+      .orderBy(desc(academicSearches.createdAt))
+      .limit(limit)
+      .all()
+      .map((row) => ({
+        ...row,
+        filters: parse<AcademicSearchFilters>(row.filtersJson),
+        filtersJson: undefined,
+      }));
+  }
+  beginAcademicSearch(searchId: string) {
+    const search = this.getAcademicSearch(searchId);
+    if (!search) throw new Error("Academic search not found");
+    const timestamp = now();
+    this.db
+      .update(academicSearches)
+      .set({
+        status: "DISCOVERING",
+        startedAt: search.startedAt ?? timestamp,
+        completedAt: null,
+        errorJson: null,
+        updatedAt: timestamp,
+      })
+      .where(eq(academicSearches.id, searchId))
+      .run();
+    return search;
+  }
+  completeAcademicSearch(searchId: string, resultCount: number) {
+    const timestamp = now();
+    this.db
+      .update(academicSearches)
+      .set({
+        status: "COMPLETED",
+        resultCount,
+        completedAt: timestamp,
+        errorJson: null,
+        updatedAt: timestamp,
+      })
+      .where(eq(academicSearches.id, searchId))
+      .run();
+    return this.getAcademicSearch(searchId);
+  }
+  failAcademicSearch(searchId: string, error: unknown) {
+    const timestamp = now();
+    this.db
+      .update(academicSearches)
+      .set({
+        status: "FAILED",
+        completedAt: timestamp,
+        errorJson: JSON.stringify({
+          message: error instanceof Error ? error.message : String(error),
+        }),
+        updatedAt: timestamp,
+      })
+      .where(eq(academicSearches.id, searchId))
+      .run();
+    return this.getAcademicSearch(searchId);
+  }
+  runAcademicSearch(searchId: string) {
+    const search = this.getAcademicSearch(searchId);
+    if (!search) throw new Error("Academic search not found");
+    const timestamp = now();
+    this.db
+      .update(academicSearches)
+      .set({ status: "RUNNING", startedAt: timestamp, updatedAt: timestamp })
+      .where(eq(academicSearches.id, searchId))
+      .run();
+    const sources = this.db
+      .select()
+      .from(academicSources)
+      .where(eq(academicSources.enabled, true))
+      .all();
+    for (const source of sources)
+      this.enqueue(
+        "RESEARCH_ACADEMIC_URL",
+        { sourceId: source.id },
+        `academic-search-source:${searchId}:${source.id}`,
+        70,
+      );
+    const results = this.filterOpportunities(search.filters);
+    for (const item of results.slice(0, 25))
+      this.queueAcademicAi("ANALYZE_ACADEMIC_OPPORTUNITY_AI", String(item.id));
+    this.db
+      .update(academicSearches)
+      .set({
+        status: sources.length ? "RESEARCHING_SOURCES" : "COMPLETED",
+        resultCount: results.length,
+        completedAt: sources.length ? null : now(),
+        updatedAt: now(),
+      })
+      .where(eq(academicSearches.id, searchId))
+      .run();
+    return {
+      searchId,
+      status: sources.length ? "RESEARCHING_SOURCES" : "COMPLETED",
+      sourcesQueued: sources.length,
+      resultCount: results.length,
+    };
+  }
+  filterOpportunities(filters: AcademicSearchFilters) {
+    const rows = this.listOpportunities(500) as Array<Record<string, unknown>>;
+    const degreeMap: Record<string, string[]> = {
+      PHD: ["PHD"],
+      MS_MSC: ["MASTERS", "MS", "MSC"],
+      MS_TO_PHD: ["MS_PHD"],
+      RESEARCH_MASTERS: ["RESEARCH_MASTERS"],
+      RESEARCH_FELLOWSHIP: ["FELLOWSHIP", "RESEARCH"],
+      GRADUATE_RESEARCH: ["GRADUATE_RESEARCH", "RESEARCH"],
+      ANY: [],
+    };
+    const fundingMap: Record<string, string[]> = {
+      FULLY_FUNDED: ["CONFIRMED_FULL_FUNDING"],
+      TUITION_STIPEND: ["CONFIRMED_FULL_FUNDING"],
+      TUITION_FREE: ["TUITION_FREE_FUNDING_REQUIRED"],
+      PARTIAL: ["PARTIAL_FUNDING"],
+      AVAILABLE: [
+        "CONFIRMED_FULL_FUNDING",
+        "TUITION_FREE_FUNDING_REQUIRED",
+        "PARTIAL_FUNDING",
+        "POTENTIAL_FUNDING_UNCONFIRMED",
+      ],
+      UNKNOWN: ["UNKNOWN"],
+      ANY: [],
+    };
+    const countries = new Set(
+      filters.countries.map((value) => value.toLowerCase()),
+    );
+    const nowMs = Date.now();
+    return rows
+      .filter((row) => {
+        const text =
+            `${row.title} ${row.university_name} ${row.country}`.toLowerCase(),
+          status = String(row.status),
+          eligibility = String(row.eligibility_status),
+          funding = String(row.funding_category),
+          deadline = row.deadline ? Date.parse(String(row.deadline)) : null;
+        const statusMatch =
+          filters.status === "ALL" ||
+          (filters.status === "BEST_MATCHES" &&
+            Number(row.current_score) >= 75) ||
+          (filters.status === "FULLY_FUNDED" &&
+            funding === "CONFIRMED_FULL_FUNDING") ||
+          (filters.status === "ELIGIBLE" &&
+            ["ELIGIBLE", "LIKELY_ELIGIBLE"].includes(eligibility)) ||
+          (filters.status === "NEEDS_REVIEW" &&
+            ["REVIEW_REQUIRED", "UNKNOWN"].includes(eligibility)) ||
+          (filters.status === "DEADLINE_SOON" &&
+            deadline !== null &&
+            deadline >= nowMs &&
+            deadline - nowMs <= 45 * 86400000) ||
+          (filters.status === "OUTREACH_READY" &&
+            status === "PROFESSOR_OUTREACH_READY") ||
+          (filters.status === "APPLIED" &&
+            [
+              "APPLICATION_SUBMITTED",
+              "INTERVIEW",
+              "OFFER",
+              "FUNDED_OFFER",
+            ].includes(status)) ||
+          filters.status === "PROFESSOR_FOUND" ||
+          filters.status === "SAVED";
+        return (
+          statusMatch &&
+          (!countries.size ||
+            filters.countries.includes("All Countries") ||
+            countries.has(String(row.country).toLowerCase())) &&
+          (!degreeMap[filters.degree]?.length ||
+            degreeMap[filters.degree]!.includes(
+              String(row.degree_level).toUpperCase(),
+            )) &&
+          (!fundingMap[filters.funding]?.length ||
+            fundingMap[filters.funding]!.includes(funding)) &&
+          (!filters.keyword || text.includes(filters.keyword.toLowerCase()))
+        );
+      })
+      .sort((a, b) =>
+        filters.sort === "DEADLINE"
+          ? String(a.deadline ?? "9999").localeCompare(
+              String(b.deadline ?? "9999"),
+            )
+          : filters.sort === "COUNTRY"
+            ? String(a.country).localeCompare(String(b.country))
+            : filters.sort === "NEWEST"
+              ? String(b.first_discovered_at).localeCompare(
+                  String(a.first_discovered_at),
+                )
+              : Number(b.current_score) - Number(a.current_score),
+      );
+  }
+  saveToShortlist(
+    entityType: "OPPORTUNITY" | "UNIVERSITY" | "PROFESSOR",
+    entityId: string,
+  ) {
+    const timestamp = now();
+    this.db
+      .insert(academicShortlist)
+      .values({
+        id: randomUUID(),
+        entityType,
+        entityId,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .onConflictDoNothing()
+      .run();
+    return { saved: true, entityType, entityId };
+  }
+  removeFromShortlist(entityType: string, entityId: string) {
+    this.db
+      .delete(academicShortlist)
+      .where(
+        and(
+          eq(academicShortlist.entityType, entityType),
+          eq(academicShortlist.entityId, entityId),
+        ),
+      )
+      .run();
+    return { saved: false, entityType, entityId };
+  }
+  listShortlist() {
+    const rows = this.db
+      .select()
+      .from(academicShortlist)
+      .orderBy(desc(academicShortlist.createdAt))
+      .all();
+    return rows.map((row) => ({
+      ...row,
+      entity:
+        row.entityType === "OPPORTUNITY"
+          ? this.getOpportunity(row.entityId)
+          : row.entityType === "UNIVERSITY"
+            ? this.getUniversity(row.entityId)
+            : this.getProfessor(row.entityId),
+    }));
+  }
 
-  upsertUniversity(input:{name:string;country:string;city?:string;officialUrl?:string;admissionsUrl?:string;graduateAdmissionsUrl?:string;confidence?:number}){const normalizedName=normalizeAcademicName(input.name);const existing=this.db.select().from(universities).where(and(eq(universities.normalizedName,normalizedName),eq(universities.country,input.country))).get();const timestamp=now();if(existing){this.db.update(universities).set({...input,canonicalName:input.name,confidence:input.confidence??existing.confidence,updatedAt:timestamp}).where(eq(universities.id,existing.id)).run();return this.getUniversity(existing.id)!;}const id=randomUUID();this.db.insert(universities).values({id,canonicalName:input.name,normalizedName,country:input.country,city:input.city,officialUrl:input.officialUrl,admissionsUrl:input.admissionsUrl,graduateAdmissionsUrl:input.graduateAdmissionsUrl,confidence:input.confidence??0,firstDiscoveredAt:timestamp,createdAt:timestamp,updatedAt:timestamp}).run();return this.getUniversity(id)!;}
-  getUniversity(id:string){return this.db.select().from(universities).where(eq(universities.id,id)).get()??null;}
-  listUniversities(){return this.db.select().from(universities).orderBy(universities.country,universities.canonicalName).all();}
-  upsertProgram(input:{universityId:string;departmentId?:string|undefined;name:string;degreeLevel:string;websiteUrl?:string|undefined;applicationUrl?:string|undefined;requirements?:Record<string,unknown>|undefined}){const normalizedName=normalizeAcademicName(input.name);const existing=this.db.select().from(academicPrograms).where(and(eq(academicPrograms.universityId,input.universityId),eq(academicPrograms.normalizedName,normalizedName),eq(academicPrograms.degreeLevel,input.degreeLevel))).get();const timestamp=now();if(existing){this.db.update(academicPrograms).set({departmentId:input.departmentId,websiteUrl:input.websiteUrl,applicationUrl:input.applicationUrl,requirementsJson:JSON.stringify(input.requirements??{}),updatedAt:timestamp}).where(eq(academicPrograms.id,existing.id)).run();return this.getProgram(existing.id)!;}const id=randomUUID();this.db.insert(academicPrograms).values({id,universityId:input.universityId,departmentId:input.departmentId,name:input.name,normalizedName,degreeLevel:input.degreeLevel,websiteUrl:input.websiteUrl,applicationUrl:input.applicationUrl,requirementsJson:JSON.stringify(input.requirements??{}),createdAt:timestamp,updatedAt:timestamp}).run();return this.getProgram(id)!;}
-  getProgram(id:string){const row=this.db.select().from(academicPrograms).where(eq(academicPrograms.id,id)).get();return row?{...row,requirements:parse(row.requirementsJson)}:null;}
-  listPrograms(){return this.db.select().from(academicPrograms).orderBy(academicPrograms.name).all().map(row=>({...row,requirements:parse(row.requirementsJson)}));}
-  upsertProfessor(input:{universityId:string;fullName:string;departmentId?:string;researchGroupId?:string;title?:string;officialProfileUrl?:string;labUrl?:string;scholarUrl?:string;orcid?:string;publicEmail?:string;researchAreas?:string[];summary?:string;recentWorks?:unknown[];projects?:unknown[]}){const normalizedName=normalizeAcademicName(input.fullName);const existing=this.db.select().from(professors).where(and(eq(professors.universityId,input.universityId),eq(professors.normalizedName,normalizedName))).get();const timestamp=now();const values={departmentId:input.departmentId,researchGroupId:input.researchGroupId,title:input.title,officialProfileUrl:input.officialProfileUrl,labUrl:input.labUrl,scholarUrl:input.scholarUrl,orcid:input.orcid,publicEmail:input.publicEmail,researchAreasJson:JSON.stringify(input.researchAreas??[]),summary:input.summary,recentWorksJson:JSON.stringify(input.recentWorks??[]),projectsJson:JSON.stringify(input.projects??[]),lastVerifiedAt:timestamp,updatedAt:timestamp};if(existing){this.db.update(professors).set(values).where(eq(professors.id,existing.id)).run();return this.getProfessor(existing.id)!;}const id=randomUUID();this.db.insert(professors).values({id,universityId:input.universityId,fullName:input.fullName,normalizedName,firstDiscoveredAt:timestamp,createdAt:timestamp,...values}).run();return this.getProfessor(id)!;}
-  getProfessor(id:string){const row=this.db.select().from(professors).where(eq(professors.id,id)).get();return row?{...row,researchAreas:parse(row.researchAreasJson),recentWorks:parse(row.recentWorksJson),projects:parse(row.projectsJson)}:null;}
-  listProfessorCases(){return this.connection.sqlite.prepare(`SELECT pc.*,p.full_name,p.title,p.public_email,p.official_profile_url,p.research_areas_json,u.canonical_name university_name,u.country FROM professor_cases pc JOIN professors p ON p.id=pc.professor_id JOIN universities u ON u.id=p.university_id ORDER BY pc.updated_at DESC`).all();}
-  createProfessorCase(input:{professorId:string;opportunityId?:string;matchSummary?:string;matchingSkills?:string[];matchingInterests?:string[];matchingExperience?:string[];researchIdeas?:string[];weaknesses?:string[];matchConfidence?:number;notes?:string}){const existing=this.db.select().from(professorCases).where(and(eq(professorCases.professorId,input.professorId),input.opportunityId?eq(professorCases.opportunityId,input.opportunityId):sql`${professorCases.opportunityId} is null`)).get();if(existing)return this.getProfessorCase(existing.id);const timestamp=now(),id=randomUUID();this.db.insert(professorCases).values({id,professorId:input.professorId,opportunityId:input.opportunityId,matchSummary:input.matchSummary,matchingSkillsJson:JSON.stringify(input.matchingSkills??[]),matchingInterestsJson:JSON.stringify(input.matchingInterests??[]),matchingExperienceJson:JSON.stringify(input.matchingExperience??[]),researchIdeasJson:JSON.stringify(input.researchIdeas??[]),weaknessesJson:JSON.stringify(input.weaknesses??[]),matchConfidence:input.matchConfidence??0,notes:input.notes,createdAt:timestamp,updatedAt:timestamp}).run();return this.getProfessorCase(id);}
-  getProfessorCase(id:string){const row=this.db.select().from(professorCases).where(eq(professorCases.id,id)).get();if(!row)return null;return{...row,matchingSkills:parse(row.matchingSkillsJson),matchingInterests:parse(row.matchingInterestsJson),matchingExperience:parse(row.matchingExperienceJson),researchIdeas:parse(row.researchIdeasJson),weaknesses:parse(row.weaknessesJson),professor:this.getProfessor(row.professorId),evidence:this.listEvidence('PROFESSOR',row.professorId),outreach:this.db.select().from(academicOutreach).where(eq(academicOutreach.professorCaseId,id)).orderBy(desc(academicOutreach.createdAt)).all()};}
+  upsertUniversity(input: {
+    name: string;
+    country: string;
+    city?: string;
+    officialUrl?: string;
+    admissionsUrl?: string;
+    graduateAdmissionsUrl?: string;
+    confidence?: number;
+  }) {
+    const normalizedName = normalizeAcademicName(input.name);
+    const existing = this.db
+      .select()
+      .from(universities)
+      .where(
+        and(
+          eq(universities.normalizedName, normalizedName),
+          eq(universities.country, input.country),
+        ),
+      )
+      .get();
+    const timestamp = now();
+    if (existing) {
+      this.db
+        .update(universities)
+        .set({
+          ...input,
+          canonicalName: input.name,
+          confidence: input.confidence ?? existing.confidence,
+          updatedAt: timestamp,
+        })
+        .where(eq(universities.id, existing.id))
+        .run();
+      return this.getUniversity(existing.id)!;
+    }
+    const id = randomUUID();
+    this.db
+      .insert(universities)
+      .values({
+        id,
+        canonicalName: input.name,
+        normalizedName,
+        country: input.country,
+        city: input.city,
+        officialUrl: input.officialUrl,
+        admissionsUrl: input.admissionsUrl,
+        graduateAdmissionsUrl: input.graduateAdmissionsUrl,
+        confidence: input.confidence ?? 0,
+        firstDiscoveredAt: timestamp,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+    return this.getUniversity(id)!;
+  }
+  getUniversity(id: string) {
+    return (
+      this.db
+        .select()
+        .from(universities)
+        .where(eq(universities.id, id))
+        .get() ?? null
+    );
+  }
+  listUniversities() {
+    return this.db
+      .select()
+      .from(universities)
+      .orderBy(universities.country, universities.canonicalName)
+      .all();
+  }
+  upsertProgram(input: {
+    universityId: string;
+    departmentId?: string | undefined;
+    name: string;
+    degreeLevel: string;
+    websiteUrl?: string | undefined;
+    applicationUrl?: string | undefined;
+    requirements?: Record<string, unknown> | undefined;
+  }) {
+    const normalizedName = normalizeAcademicName(input.name);
+    const existing = this.db
+      .select()
+      .from(academicPrograms)
+      .where(
+        and(
+          eq(academicPrograms.universityId, input.universityId),
+          eq(academicPrograms.normalizedName, normalizedName),
+          eq(academicPrograms.degreeLevel, input.degreeLevel),
+        ),
+      )
+      .get();
+    const timestamp = now();
+    if (existing) {
+      this.db
+        .update(academicPrograms)
+        .set({
+          departmentId: input.departmentId,
+          websiteUrl: input.websiteUrl,
+          applicationUrl: input.applicationUrl,
+          requirementsJson: JSON.stringify(input.requirements ?? {}),
+          updatedAt: timestamp,
+        })
+        .where(eq(academicPrograms.id, existing.id))
+        .run();
+      return this.getProgram(existing.id)!;
+    }
+    const id = randomUUID();
+    this.db
+      .insert(academicPrograms)
+      .values({
+        id,
+        universityId: input.universityId,
+        departmentId: input.departmentId,
+        name: input.name,
+        normalizedName,
+        degreeLevel: input.degreeLevel,
+        websiteUrl: input.websiteUrl,
+        applicationUrl: input.applicationUrl,
+        requirementsJson: JSON.stringify(input.requirements ?? {}),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+    return this.getProgram(id)!;
+  }
+  getProgram(id: string) {
+    const row = this.db
+      .select()
+      .from(academicPrograms)
+      .where(eq(academicPrograms.id, id))
+      .get();
+    return row ? { ...row, requirements: parse(row.requirementsJson) } : null;
+  }
+  listPrograms() {
+    return this.db
+      .select()
+      .from(academicPrograms)
+      .orderBy(academicPrograms.name)
+      .all()
+      .map((row) => ({ ...row, requirements: parse(row.requirementsJson) }));
+  }
+  upsertProfessor(input: {
+    universityId: string;
+    fullName: string;
+    departmentId?: string;
+    researchGroupId?: string;
+    title?: string;
+    officialProfileUrl?: string;
+    labUrl?: string;
+    scholarUrl?: string;
+    orcid?: string;
+    publicEmail?: string;
+    researchAreas?: string[];
+    summary?: string;
+    recentWorks?: unknown[];
+    projects?: unknown[];
+  }) {
+    const normalizedName = normalizeAcademicName(input.fullName);
+    const existing = this.db
+      .select()
+      .from(professors)
+      .where(
+        and(
+          eq(professors.universityId, input.universityId),
+          eq(professors.normalizedName, normalizedName),
+        ),
+      )
+      .get();
+    const timestamp = now();
+    const values = {
+      departmentId: input.departmentId,
+      researchGroupId: input.researchGroupId,
+      title: input.title,
+      officialProfileUrl: input.officialProfileUrl,
+      labUrl: input.labUrl,
+      scholarUrl: input.scholarUrl,
+      orcid: input.orcid,
+      publicEmail: input.publicEmail,
+      researchAreasJson: JSON.stringify(input.researchAreas ?? []),
+      summary: input.summary,
+      recentWorksJson: JSON.stringify(input.recentWorks ?? []),
+      projectsJson: JSON.stringify(input.projects ?? []),
+      lastVerifiedAt: timestamp,
+      updatedAt: timestamp,
+    };
+    if (existing) {
+      this.db
+        .update(professors)
+        .set(values)
+        .where(eq(professors.id, existing.id))
+        .run();
+      return this.getProfessor(existing.id)!;
+    }
+    const id = randomUUID();
+    this.db
+      .insert(professors)
+      .values({
+        id,
+        universityId: input.universityId,
+        fullName: input.fullName,
+        normalizedName,
+        firstDiscoveredAt: timestamp,
+        createdAt: timestamp,
+        ...values,
+      })
+      .run();
+    return this.getProfessor(id)!;
+  }
+  getProfessor(id: string) {
+    const row = this.db
+      .select()
+      .from(professors)
+      .where(eq(professors.id, id))
+      .get();
+    return row
+      ? {
+          ...row,
+          researchAreas: parse(row.researchAreasJson),
+          recentWorks: parse(row.recentWorksJson),
+          projects: parse(row.projectsJson),
+        }
+      : null;
+  }
+  listProfessorCases() {
+    return this.connection.sqlite
+      .prepare(
+        `SELECT pc.*,p.full_name,p.title,p.public_email,p.official_profile_url,p.research_areas_json,u.canonical_name university_name,u.country FROM professor_cases pc JOIN professors p ON p.id=pc.professor_id JOIN universities u ON u.id=p.university_id ORDER BY pc.updated_at DESC`,
+      )
+      .all();
+  }
+  createProfessorCase(input: {
+    professorId: string;
+    opportunityId?: string;
+    matchSummary?: string;
+    matchingSkills?: string[];
+    matchingInterests?: string[];
+    matchingExperience?: string[];
+    researchIdeas?: string[];
+    weaknesses?: string[];
+    matchConfidence?: number;
+    notes?: string;
+  }) {
+    const existing = this.db
+      .select()
+      .from(professorCases)
+      .where(
+        and(
+          eq(professorCases.professorId, input.professorId),
+          input.opportunityId
+            ? eq(professorCases.opportunityId, input.opportunityId)
+            : sql`${professorCases.opportunityId} is null`,
+        ),
+      )
+      .get();
+    if (existing) return this.getProfessorCase(existing.id);
+    const timestamp = now(),
+      id = randomUUID();
+    this.db
+      .insert(professorCases)
+      .values({
+        id,
+        professorId: input.professorId,
+        opportunityId: input.opportunityId,
+        matchSummary: input.matchSummary,
+        matchingSkillsJson: JSON.stringify(input.matchingSkills ?? []),
+        matchingInterestsJson: JSON.stringify(input.matchingInterests ?? []),
+        matchingExperienceJson: JSON.stringify(input.matchingExperience ?? []),
+        researchIdeasJson: JSON.stringify(input.researchIdeas ?? []),
+        weaknessesJson: JSON.stringify(input.weaknesses ?? []),
+        matchConfidence: input.matchConfidence ?? 0,
+        notes: input.notes,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+    return this.getProfessorCase(id);
+  }
+  getProfessorCase(id: string) {
+    const row = this.db
+      .select()
+      .from(professorCases)
+      .where(eq(professorCases.id, id))
+      .get();
+    if (!row) return null;
+    return {
+      ...row,
+      matchingSkills: parse(row.matchingSkillsJson),
+      matchingInterests: parse(row.matchingInterestsJson),
+      matchingExperience: parse(row.matchingExperienceJson),
+      researchIdeas: parse(row.researchIdeasJson),
+      weaknesses: parse(row.weaknessesJson),
+      professor: this.getProfessor(row.professorId),
+      evidence: this.listEvidence("PROFESSOR", row.professorId),
+      outreach: this.db
+        .select()
+        .from(academicOutreach)
+        .where(eq(academicOutreach.professorCaseId, id))
+        .orderBy(desc(academicOutreach.createdAt))
+        .all(),
+    };
+  }
 
-  saveFunding(input:typeof fundingOpportunities.$inferInsert){const timestamp=now(),id=input.id??randomUUID();this.db.insert(fundingOpportunities).values({...input,id,createdAt:input.createdAt??timestamp,updatedAt:timestamp}).run();return this.db.select().from(fundingOpportunities).where(eq(fundingOpportunities.id,id)).get()!;}
-  createOpportunity(input:{universityId:string;programId?:string;fundingOpportunityId?:string;title:string;degreeLevel:string;country:string;deadline?:string;fundingCategory?:string;sourceUrl?:string;notes?:string}){const normalizedTitle=normalizeAcademicName(input.title);const existing=this.db.select().from(academicOpportunities).where(and(eq(academicOpportunities.universityId,input.universityId),eq(academicOpportunities.normalizedTitle,normalizedTitle),eq(academicOpportunities.degreeLevel,input.degreeLevel))).get();if(existing)return existing;const timestamp=now(),id=randomUUID();this.db.insert(academicOpportunities).values({...input,id,normalizedTitle,fundingCategory:input.fundingCategory??'UNKNOWN',firstDiscoveredAt:timestamp,createdAt:timestamp,updatedAt:timestamp}).run();this.db.insert(applicationCases).values({id:randomUUID(),opportunityId:id,createdAt:timestamp,updatedAt:timestamp}).run();return this.getOpportunity(id)!;}
-  listOpportunities(limit=100){return this.connection.sqlite.prepare(`SELECT o.*,u.canonical_name university_name,u.city university_city,(SELECT count(*) FROM professor_cases pc WHERE pc.opportunity_id=o.id) professor_count,EXISTS(SELECT 1 FROM academic_shortlist s WHERE s.entity_type='OPPORTUNITY' AND s.entity_id=o.id) saved FROM academic_opportunities o JOIN universities u ON u.id=o.university_id ORDER BY o.current_score DESC,o.deadline ASC LIMIT ?`).all(limit);}
-  getOpportunity(id:string){const row=this.connection.sqlite.prepare(`SELECT o.*,u.canonical_name university_name,u.city university_city,u.official_url university_url,p.name program_name,p.requirements_json,p.application_url FROM academic_opportunities o JOIN universities u ON u.id=o.university_id LEFT JOIN academic_programs p ON p.id=o.program_id WHERE o.id=?`).get(id) as Record<string,unknown>|undefined;if(!row)return null;return{...row,requirements:row.requirements_json?parse(String(row.requirements_json)):{},evidence:this.listEvidence('OPPORTUNITY',id),professorCases:this.connection.sqlite.prepare(`SELECT pc.id,pc.status,pc.match_summary,pc.match_confidence,p.full_name,p.title,p.public_email,p.official_profile_url,p.research_areas_json FROM professor_cases pc JOIN professors p ON p.id=pc.professor_id WHERE pc.opportunity_id=? ORDER BY pc.match_confidence DESC`).all(id),scoreHistory:this.db.select().from(academicScoreSnapshots).where(eq(academicScoreSnapshots.opportunityId,id)).orderBy(desc(academicScoreSnapshots.createdAt)).all(),eligibility:this.db.select().from(eligibilityChecks).where(eq(eligibilityChecks.opportunityId,id)).orderBy(desc(eligibilityChecks.createdAt)).all(),deadlines:this.db.select().from(applicationDeadlines).where(eq(applicationDeadlines.opportunityId,id)).all(),application:this.db.select().from(applicationCases).where(eq(applicationCases.opportunityId,id)).get(),aiAnalyses:this.listAcademicAiRuns('ACADEMIC_OPPORTUNITY',id)};}
-  searchCases(query:string){const pattern=`%${query}%`;return this.connection.sqlite.prepare(`SELECT o.id,o.title,o.country,o.funding_category,o.eligibility_status,o.current_score,u.canonical_name university_name FROM academic_opportunities o JOIN universities u ON u.id=o.university_id WHERE o.title LIKE ? OR u.canonical_name LIKE ? OR o.country LIKE ? ORDER BY o.current_score DESC LIMIT 100`).all(pattern,pattern,pattern);}
+  saveFunding(input: typeof fundingOpportunities.$inferInsert) {
+    const timestamp = now(),
+      id = input.id ?? randomUUID();
+    this.db
+      .insert(fundingOpportunities)
+      .values({
+        ...input,
+        id,
+        createdAt: input.createdAt ?? timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+    return this.db
+      .select()
+      .from(fundingOpportunities)
+      .where(eq(fundingOpportunities.id, id))
+      .get()!;
+  }
+  createOpportunity(input: {
+    universityId: string;
+    programId?: string;
+    fundingOpportunityId?: string;
+    title: string;
+    degreeLevel: string;
+    country: string;
+    deadline?: string;
+    fundingCategory?: string;
+    sourceUrl?: string;
+    notes?: string;
+  }) {
+    const normalizedTitle = normalizeAcademicName(input.title);
+    const existing = this.db
+      .select()
+      .from(academicOpportunities)
+      .where(
+        and(
+          eq(academicOpportunities.universityId, input.universityId),
+          eq(academicOpportunities.normalizedTitle, normalizedTitle),
+          eq(academicOpportunities.degreeLevel, input.degreeLevel),
+        ),
+      )
+      .get();
+    if (existing) return existing;
+    const timestamp = now(),
+      id = randomUUID();
+    this.db
+      .insert(academicOpportunities)
+      .values({
+        ...input,
+        id,
+        normalizedTitle,
+        fundingCategory: input.fundingCategory ?? "UNKNOWN",
+        firstDiscoveredAt: timestamp,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+    this.db
+      .insert(applicationCases)
+      .values({
+        id: randomUUID(),
+        opportunityId: id,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+    return this.getOpportunity(id)!;
+  }
+  listOpportunities(limit = 100) {
+    return this.connection.sqlite
+      .prepare(
+        `SELECT o.*,u.canonical_name university_name,u.city university_city,(SELECT count(*) FROM professor_cases pc WHERE pc.opportunity_id=o.id) professor_count,EXISTS(SELECT 1 FROM academic_shortlist s WHERE s.entity_type='OPPORTUNITY' AND s.entity_id=o.id) saved FROM academic_opportunities o JOIN universities u ON u.id=o.university_id ORDER BY o.current_score DESC,o.deadline ASC LIMIT ?`,
+      )
+      .all(limit);
+  }
+  getOpportunity(id: string) {
+    const row = this.connection.sqlite
+      .prepare(
+        `SELECT o.*,u.canonical_name university_name,u.city university_city,u.official_url university_url,p.name program_name,p.requirements_json,p.application_url FROM academic_opportunities o JOIN universities u ON u.id=o.university_id LEFT JOIN academic_programs p ON p.id=o.program_id WHERE o.id=?`,
+      )
+      .get(id) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return {
+      ...row,
+      requirements: row.requirements_json
+        ? parse(String(row.requirements_json))
+        : {},
+      evidence: this.listEvidence("OPPORTUNITY", id),
+      professorCases: this.connection.sqlite
+        .prepare(
+          `SELECT pc.id,pc.status,pc.match_summary,pc.match_confidence,p.full_name,p.title,p.public_email,p.official_profile_url,p.research_areas_json FROM professor_cases pc JOIN professors p ON p.id=pc.professor_id WHERE pc.opportunity_id=? ORDER BY pc.match_confidence DESC`,
+        )
+        .all(id),
+      scoreHistory: this.db
+        .select()
+        .from(academicScoreSnapshots)
+        .where(eq(academicScoreSnapshots.opportunityId, id))
+        .orderBy(desc(academicScoreSnapshots.createdAt))
+        .all(),
+      eligibility: this.db
+        .select()
+        .from(eligibilityChecks)
+        .where(eq(eligibilityChecks.opportunityId, id))
+        .orderBy(desc(eligibilityChecks.createdAt))
+        .all(),
+      deadlines: this.db
+        .select()
+        .from(applicationDeadlines)
+        .where(eq(applicationDeadlines.opportunityId, id))
+        .all(),
+      application: this.db
+        .select()
+        .from(applicationCases)
+        .where(eq(applicationCases.opportunityId, id))
+        .get(),
+      aiAnalyses: this.listAcademicAiRuns("ACADEMIC_OPPORTUNITY", id),
+    };
+  }
+  searchCases(query: string) {
+    const pattern = `%${query}%`;
+    return this.connection.sqlite
+      .prepare(
+        `SELECT o.id,o.title,o.country,o.funding_category,o.eligibility_status,o.current_score,u.canonical_name university_name FROM academic_opportunities o JOIN universities u ON u.id=o.university_id WHERE o.title LIKE ? OR u.canonical_name LIKE ? OR o.country LIKE ? ORDER BY o.current_score DESC LIMIT 100`,
+      )
+      .all(pattern, pattern, pattern);
+  }
 
-  saveSource(input:{kind:string;name:string;url:string;canonicalUrl:string;entityType?:string;entityId?:string;official?:boolean;metadata?:Record<string,unknown>}){const existing=this.db.select().from(academicSources).where(eq(academicSources.canonicalUrl,input.canonicalUrl)).get();if(existing)return existing;const timestamp=now(),id=randomUUID();this.db.insert(academicSources).values({id,...input,metadataJson:JSON.stringify(input.metadata??{}),createdAt:timestamp,updatedAt:timestamp}).run();return this.db.select().from(academicSources).where(eq(academicSources.id,id)).get()!;}
-  saveEvidence(input:{sourceId:string;pageVersionId?:string;entityType:string;entityId:string;claimType:string;claim:string;excerpt?:string;sourceUrl:string;classification?:string;confidence:number}){const timestamp=now(),id=randomUUID();this.db.insert(academicEvidence).values({id,...input,classification:input.classification??'FACT',observedAt:timestamp,createdAt:timestamp}).onConflictDoNothing().run();return this.db.select().from(academicEvidence).where(and(eq(academicEvidence.entityType,input.entityType),eq(academicEvidence.entityId,input.entityId),eq(academicEvidence.claimType,input.claimType),eq(academicEvidence.sourceUrl,input.sourceUrl),eq(academicEvidence.claim,input.claim))).get()!;}
-  listEvidence(entityType:string,entityId:string){return this.db.select().from(academicEvidence).where(and(eq(academicEvidence.entityType,entityType),eq(academicEvidence.entityId,entityId))).orderBy(desc(academicEvidence.observedAt)).all();}
+  saveSource(input: {
+    kind: string;
+    name: string;
+    url: string;
+    canonicalUrl: string;
+    entityType?: string;
+    entityId?: string;
+    official?: boolean;
+    metadata?: Record<string, unknown>;
+  }) {
+    const existing = this.db
+      .select()
+      .from(academicSources)
+      .where(eq(academicSources.canonicalUrl, input.canonicalUrl))
+      .get();
+    if (existing) return existing;
+    const timestamp = now(),
+      id = randomUUID();
+    this.db
+      .insert(academicSources)
+      .values({
+        id,
+        ...input,
+        metadataJson: JSON.stringify(input.metadata ?? {}),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+    return this.db
+      .select()
+      .from(academicSources)
+      .where(eq(academicSources.id, id))
+      .get()!;
+  }
+  saveEvidence(input: {
+    sourceId: string;
+    pageVersionId?: string;
+    entityType: string;
+    entityId: string;
+    claimType: string;
+    claim: string;
+    excerpt?: string;
+    sourceUrl: string;
+    classification?: string;
+    confidence: number;
+  }) {
+    const timestamp = now(),
+      id = randomUUID();
+    this.db
+      .insert(academicEvidence)
+      .values({
+        id,
+        ...input,
+        classification: input.classification ?? "FACT",
+        observedAt: timestamp,
+        createdAt: timestamp,
+      })
+      .onConflictDoNothing()
+      .run();
+    return this.db
+      .select()
+      .from(academicEvidence)
+      .where(
+        and(
+          eq(academicEvidence.entityType, input.entityType),
+          eq(academicEvidence.entityId, input.entityId),
+          eq(academicEvidence.claimType, input.claimType),
+          eq(academicEvidence.sourceUrl, input.sourceUrl),
+          eq(academicEvidence.claim, input.claim),
+        ),
+      )
+      .get()!;
+  }
+  listEvidence(entityType: string, entityId: string) {
+    return this.db
+      .select()
+      .from(academicEvidence)
+      .where(
+        and(
+          eq(academicEvidence.entityType, entityType),
+          eq(academicEvidence.entityId, entityId),
+        ),
+      )
+      .orderBy(desc(academicEvidence.observedAt))
+      .all();
+  }
 
-  runEligibility(opportunityId:string,criteria:EligibilityCriterion[]){const profile=this.ensureDefaultProfile();const result=evaluateEligibility(criteria);const timestamp=now(),id=randomUUID(),evidenceIds=[...new Set(criteria.flatMap(c=>c.evidenceIds))];this.db.insert(eligibilityChecks).values({id,opportunityId,applicantProfileId:profile.id,status:result.status,criteriaJson:JSON.stringify(criteria),reasonsJson:JSON.stringify(result.reasons),evidenceIdsJson:JSON.stringify(evidenceIds),rulesVersion:'academic-eligibility-v1',createdAt:timestamp}).run();this.db.update(academicOpportunities).set({eligibilityStatus:result.status,updatedAt:timestamp}).where(eq(academicOpportunities.id,opportunityId)).run();return{id,...result,criteria,evidenceIds,createdAt:timestamp};}
-  scoreOpportunity(opportunityId:string,input:{funding:string;eligibility:string;researchMatch:number;professorMatch:number;programQuality:number;directSupervisor:boolean;deadlineFreshness:number;feasibility:number;contactability:number;evidenceCompleteness:number;evidenceIds?:string[]}){const opp=this.db.select({country:academicOpportunities.country}).from(academicOpportunities).where(eq(academicOpportunities.id,opportunityId)).get();if(!opp)throw new Error('Academic opportunity not found');const result=scoreAcademicOpportunity({...input,funding:input.funding as never,eligibility:input.eligibility as never,countryTier:countryTier(opp.country)});const timestamp=now(),id=randomUUID();this.db.insert(academicScoreSnapshots).values({id,opportunityId,total:result.total,componentsJson:JSON.stringify(result.components),explanationsJson:JSON.stringify(result.explanations),evidenceIdsJson:JSON.stringify(input.evidenceIds??[]),modelVersion:'academic-heuristic-v1',createdAt:timestamp}).run();this.db.update(academicOpportunities).set({currentScore:result.total,updatedAt:timestamp}).where(eq(academicOpportunities.id,opportunityId)).run();return{id,...result,modelVersion:'academic-heuristic-v1',createdAt:timestamp};}
-  updateApplicationStatus(opportunityId:string,to:string,actor='USER'){const target=applicationStatusSchema.parse(to);const row=this.db.select().from(applicationCases).where(eq(applicationCases.opportunityId,opportunityId)).get();if(!row)throw new Error('Application case not found');const from=applicationStatusSchema.parse(row.status);if(!canTransitionApplication(from,target))throw new Error(`Invalid academic application transition: ${from} -> ${target}`);const timestamp=now();this.db.update(applicationCases).set({status:target,updatedAt:timestamp,...(target==='APPLICATION_SUBMITTED'?{submittedAt:timestamp}:{}),...(['OFFER','FUNDED_OFFER','REJECTED'].includes(target)?{decisionAt:timestamp}:{})}).where(eq(applicationCases.id,row.id)).run();this.db.update(academicOpportunities).set({status:target,updatedAt:timestamp}).where(eq(academicOpportunities.id,opportunityId)).run();this.db.insert(activities).values({id:randomUUID(),entityType:'ACADEMIC_APPLICATION',entityId:row.id,type:'STATUS_CHANGED',actor,fromStatus:from,toStatus:target,occurredAt:timestamp,createdAt:timestamp}).run();return{...row,status:target,updatedAt:timestamp};}
+  runEligibility(opportunityId: string, criteria: EligibilityCriterion[]) {
+    const profile = this.ensureDefaultProfile();
+    const result = evaluateEligibility(criteria);
+    const timestamp = now(),
+      id = randomUUID(),
+      evidenceIds = [...new Set(criteria.flatMap((c) => c.evidenceIds))];
+    this.db
+      .insert(eligibilityChecks)
+      .values({
+        id,
+        opportunityId,
+        applicantProfileId: profile.id,
+        status: result.status,
+        criteriaJson: JSON.stringify(criteria),
+        reasonsJson: JSON.stringify(result.reasons),
+        evidenceIdsJson: JSON.stringify(evidenceIds),
+        rulesVersion: "academic-eligibility-v1",
+        createdAt: timestamp,
+      })
+      .run();
+    this.db
+      .update(academicOpportunities)
+      .set({ eligibilityStatus: result.status, updatedAt: timestamp })
+      .where(eq(academicOpportunities.id, opportunityId))
+      .run();
+    return { id, ...result, criteria, evidenceIds, createdAt: timestamp };
+  }
+  scoreOpportunity(
+    opportunityId: string,
+    input: {
+      funding: string;
+      eligibility: string;
+      researchMatch: number;
+      professorMatch: number;
+      programQuality: number;
+      directSupervisor: boolean;
+      deadlineFreshness: number;
+      feasibility: number;
+      contactability: number;
+      evidenceCompleteness: number;
+      evidenceIds?: string[];
+    },
+  ) {
+    const opp = this.db
+      .select({ country: academicOpportunities.country })
+      .from(academicOpportunities)
+      .where(eq(academicOpportunities.id, opportunityId))
+      .get();
+    if (!opp) throw new Error("Academic opportunity not found");
+    const result = scoreAcademicOpportunity({
+      ...input,
+      funding: input.funding as never,
+      eligibility: input.eligibility as never,
+      countryTier: countryTier(opp.country),
+    });
+    const timestamp = now(),
+      id = randomUUID();
+    this.db
+      .insert(academicScoreSnapshots)
+      .values({
+        id,
+        opportunityId,
+        total: result.total,
+        componentsJson: JSON.stringify(result.components),
+        explanationsJson: JSON.stringify(result.explanations),
+        evidenceIdsJson: JSON.stringify(input.evidenceIds ?? []),
+        modelVersion: "academic-heuristic-v1",
+        createdAt: timestamp,
+      })
+      .run();
+    this.db
+      .update(academicOpportunities)
+      .set({ currentScore: result.total, updatedAt: timestamp })
+      .where(eq(academicOpportunities.id, opportunityId))
+      .run();
+    return {
+      id,
+      ...result,
+      modelVersion: "academic-heuristic-v1",
+      createdAt: timestamp,
+    };
+  }
+  updateApplicationStatus(opportunityId: string, to: string, actor = "USER") {
+    const target = applicationStatusSchema.parse(to);
+    const row = this.db
+      .select()
+      .from(applicationCases)
+      .where(eq(applicationCases.opportunityId, opportunityId))
+      .get();
+    if (!row) throw new Error("Application case not found");
+    const from = applicationStatusSchema.parse(row.status);
+    if (!canTransitionApplication(from, target))
+      throw new Error(
+        `Invalid academic application transition: ${from} -> ${target}`,
+      );
+    const timestamp = now();
+    this.db
+      .update(applicationCases)
+      .set({
+        status: target,
+        updatedAt: timestamp,
+        ...(target === "APPLICATION_SUBMITTED"
+          ? { submittedAt: timestamp }
+          : {}),
+        ...(["OFFER", "FUNDED_OFFER", "REJECTED"].includes(target)
+          ? { decisionAt: timestamp }
+          : {}),
+      })
+      .where(eq(applicationCases.id, row.id))
+      .run();
+    this.db
+      .update(academicOpportunities)
+      .set({ status: target, updatedAt: timestamp })
+      .where(eq(academicOpportunities.id, opportunityId))
+      .run();
+    this.db
+      .insert(activities)
+      .values({
+        id: randomUUID(),
+        entityType: "ACADEMIC_APPLICATION",
+        entityId: row.id,
+        type: "STATUS_CHANGED",
+        actor,
+        fromStatus: from,
+        toStatus: target,
+        occurredAt: timestamp,
+        createdAt: timestamp,
+      })
+      .run();
+    return { ...row, status: target, updatedAt: timestamp };
+  }
 
-  saveOutreachDraft(input:{professorCaseId:string;opportunityId?:string;recipientEmail?:string;subjects:string[];textBody:string;selectedDocumentIds?:string[];evidenceIds?:string[];idempotencyKey:string}){const timestamp=now(),id=randomUUID();this.db.insert(academicOutreach).values({id,professorCaseId:input.professorCaseId,opportunityId:input.opportunityId,recipientEmail:input.recipientEmail,subjectsJson:JSON.stringify(input.subjects),textBody:input.textBody,selectedDocumentIdsJson:JSON.stringify(input.selectedDocumentIds??[]),evidenceIdsJson:JSON.stringify(input.evidenceIds??[]),idempotencyKey:input.idempotencyKey,createdAt:timestamp,updatedAt:timestamp}).onConflictDoNothing().run();return this.db.select().from(academicOutreach).where(eq(academicOutreach.idempotencyKey,input.idempotencyKey)).get()!;}
-  approveOutreach(id:string){const row=this.db.select().from(academicOutreach).where(eq(academicOutreach.id,id)).get();if(!row)throw new Error('Academic outreach not found');if(!row.recipientEmail)throw new Error('Recipient email is required');const documentIds=parse<string[]>(row.selectedDocumentIdsJson);if(documentIds.length){const found=this.db.select({id:academicDocuments.id}).from(academicDocuments).where(sql`${academicDocuments.id} in ${documentIds}`).all();if(found.length!==documentIds.length)throw new Error('One or more attachments are unavailable');}const timestamp=now();this.db.update(academicOutreach).set({status:'APPROVED',approvedAt:timestamp,updatedAt:timestamp}).where(eq(academicOutreach.id,id)).run();return{...row,status:'APPROVED',approvedAt:timestamp};}
-  queueOutreach(id:string){const row=this.db.select().from(academicOutreach).where(eq(academicOutreach.id,id)).get();if(!row)throw new Error('Academic outreach not found');if(row.status!=='APPROVED')throw new Error('Academic outreach must be explicitly approved before sending');const existing=this.connection.sqlite.prepare(`SELECT id,status FROM worker_jobs WHERE idempotency_key=?`).get(`academic-send:${row.idempotencyKey}`);if(existing)return existing;return this.enqueue('SEND_ACADEMIC_OUTREACH',{outreachId:id},`academic-send:${row.idempotencyKey}`,100);}
-  batchQueueApproved(){return this.db.select().from(academicOutreach).where(eq(academicOutreach.status,'APPROVED')).all().map(row=>this.queueOutreach(row.id));}
-  listOutreach(status?:string){return status?this.db.select().from(academicOutreach).where(eq(academicOutreach.status,status)).orderBy(desc(academicOutreach.createdAt)).all():this.db.select().from(academicOutreach).orderBy(desc(academicOutreach.createdAt)).all();}
-  markFollowup(id:string,followupAt:string|null){this.db.update(academicOutreach).set({followupAt,updatedAt:now()}).where(eq(academicOutreach.id,id)).run();return this.db.select().from(academicOutreach).where(eq(academicOutreach.id,id)).get();}
-  saveDocument(input:{applicantProfileId:string;kind:string;name:string;storageKey:string;originalFilename:string;mimeType:string;sizeBytes:number;sha256:string;metadata?:Record<string,unknown>}){const timestamp=now(),id=randomUUID();this.db.insert(academicDocuments).values({id,...input,metadataJson:JSON.stringify(input.metadata??{}),createdAt:timestamp,updatedAt:timestamp}).run();return this.db.select().from(academicDocuments).where(eq(academicDocuments.id,id)).get()!;}
-  listDocuments(){return this.db.select({id:academicDocuments.id,kind:academicDocuments.kind,name:academicDocuments.name,originalFilename:academicDocuments.originalFilename,mimeType:academicDocuments.mimeType,sizeBytes:academicDocuments.sizeBytes,version:academicDocuments.version,active:academicDocuments.active,createdAt:academicDocuments.createdAt}).from(academicDocuments).orderBy(desc(academicDocuments.createdAt)).all();}
-  getDocuments(ids:string[]){if(!ids.length)return[];return this.connection.sqlite.prepare(`SELECT id,storage_key,original_filename,mime_type,size_bytes FROM academic_documents WHERE active=1 AND id IN (${ids.map(()=>'?').join(',')})`).all(...ids) as Array<{id:string;storage_key:string;original_filename:string;mime_type:string;size_bytes:number}>;}
-  queueResearchUrl(input:{url:string;entityType?:string;entityId?:string;official?:boolean}){const canonicalUrl=new URL(input.url).toString();const source=this.saveSource({kind:'MANUAL_URL',name:new URL(input.url).hostname,url:input.url,canonicalUrl,official:input.official??false,...(input.entityType?{entityType:input.entityType}:{}),...(input.entityId?{entityId:input.entityId}:{})});return{source,job:this.enqueue('RESEARCH_ACADEMIC_URL',{sourceId:source.id},`academic-research:${source.id}:${Date.now()}`,80)};}
-  queueDueSourceRefreshes(){const timestamp=now(),bucket=timestamp.slice(0,13);return this.db.select().from(academicSources).where(and(eq(academicSources.enabled,true),sql`${academicSources.nextRefreshAt} is not null and ${academicSources.nextRefreshAt} <= ${timestamp}`)).all().map(source=>this.enqueue('RESEARCH_ACADEMIC_URL',{sourceId:source.id},`academic-refresh:${source.id}:${bucket}`,40));}
-  getSource(id:string){return this.db.select().from(academicSources).where(eq(academicSources.id,id)).get()??null;}
-  beginAcademicResearch(sourceId:string){const source=this.getSource(sourceId);if(!source)throw new Error('Academic source not found');const timestamp=now(),id=randomUUID();this.db.insert(academicResearchRuns).values({id,sourceId,entityType:source.entityType,entityId:source.entityId,trigger:'WORKER',status:'RUNNING',startedAt:timestamp,createdAt:timestamp,updatedAt:timestamp}).run();return{id,source};}
-  finishAcademicResearch(runId:string,sourceId:string,pages:Array<{contentHash:string;title:string|null;textContent:string;httpStatus:number|null;url:string}>){const timestamp=now();const source=this.getSource(sourceId);if(!source)throw new Error('Academic source not found');let changed=false;for(const page of pages){const existing=this.db.select().from(academicPageVersions).where(and(eq(academicPageVersions.sourceId,sourceId),eq(academicPageVersions.contentHash,page.contentHash))).get();if(!existing){changed=true;this.db.insert(academicPageVersions).values({id:randomUUID(),sourceId,researchRunId:runId,contentHash:page.contentHash,title:page.title,textContent:page.textContent,httpStatus:page.httpStatus,retrievedAt:timestamp,metadataJson:JSON.stringify({url:page.url}),createdAt:timestamp}).run();}}this.db.update(academicResearchRuns).set({status:'COMPLETED',changed,completedAt:timestamp,updatedAt:timestamp}).where(eq(academicResearchRuns.id,runId)).run();this.db.update(academicSources).set({lastRetrievedAt:timestamp,nextRefreshAt:new Date(Date.now()+168*3600000).toISOString(),lastContentHash:pages[0]?.contentHash,lastStatus:changed?'CHANGED':'UNCHANGED',updatedAt:timestamp}).where(eq(academicSources.id,sourceId)).run();return{runId,pages:pages.length,changed};}
-  beginAcademicSend(id:string,limits:{hourly:number;daily:number}){const row=this.db.select().from(academicOutreach).where(eq(academicOutreach.id,id)).get();if(!row||row.status!=='APPROVED')throw new Error('Academic outreach is not approved');const sent=this.connection.sqlite.prepare(`SELECT (SELECT count(*) FROM academic_outreach WHERE sent_at>=?) hourly,(SELECT count(*) FROM academic_outreach WHERE sent_at>=?) daily`).get(new Date(Date.now()-3600000).toISOString(),new Date(Date.now()-86400000).toISOString()) as {hourly:number;daily:number};if(sent.hourly>=limits.hourly||sent.daily>=limits.daily)throw new Error('Academic email send limit reached');this.db.update(academicOutreach).set({status:'SENDING',updatedAt:now()}).where(eq(academicOutreach.id,id)).run();return{...row,subjects:parse<string[]>(row.subjectsJson),documentIds:parse<string[]>(row.selectedDocumentIdsJson)};}
-  finishAcademicSend(id:string,result:{messageId:string;response?:unknown}){const timestamp=now();this.db.update(academicOutreach).set({status:'SENT',sentAt:timestamp,providerMessageId:result.messageId,updatedAt:timestamp}).where(eq(academicOutreach.id,id)).run();return{status:'SENT',sentAt:timestamp,messageId:result.messageId};}
-  failAcademicSend(id:string,error:unknown){this.db.update(academicOutreach).set({status:'APPROVED',errorJson:JSON.stringify({message:error instanceof Error?error.message:String(error)}),updatedAt:now()}).where(eq(academicOutreach.id,id)).run();}
-  listDeadlines(days=90){const from=now(),to=new Date(Date.now()+days*86400000).toISOString();return this.db.select().from(applicationDeadlines).where(and(gte(applicationDeadlines.deadlineAt,from),sql`${applicationDeadlines.deadlineAt} <= ${to}`)).orderBy(applicationDeadlines.deadlineAt).all();}
-  getApplicationCase(opportunityId:string){return this.db.select().from(applicationCases).where(eq(applicationCases.opportunityId,opportunityId)).get()??null;}
-  getFunding(id:string){return this.db.select().from(fundingOpportunities).where(eq(fundingOpportunities.id,id)).get()??null;}
-  dashboard(){const opportunities=this.listOpportunities(8);const counts=this.connection.sqlite.prepare(`SELECT (SELECT count(*) FROM academic_opportunities WHERE status NOT IN ('ARCHIVED','REJECTED')) active_opportunities,(SELECT count(*) FROM professor_cases WHERE status='OUTREACH_READY') professors_ready,(SELECT count(*) FROM academic_outreach WHERE status='DRAFT') drafts_awaiting_approval,(SELECT count(*) FROM academic_outreach WHERE followup_at<=datetime('now') AND reply_status='NONE') followups_due,(SELECT count(*) FROM academic_sources WHERE last_status='CHANGED') changed_sources`).get();const recentAnalyses=this.db.select({id:aiRuns.id,task:aiRuns.task,provider:aiRuns.provider,model:aiRuns.model,status:aiRuns.status,entityType:aiRuns.entityType,entityId:aiRuns.entityId,createdAt:aiRuns.createdAt}).from(aiRuns).where(sql`${aiRuns.entityType} is not null`).orderBy(desc(aiRuns.createdAt)).limit(6).all();return{counts,opportunities,deadlines:this.listDeadlines(60),professorCases:this.listProfessorCases().slice(0,6),recentAnalyses};}
-  getResearchContext(professorCaseId:string){return{applicant:this.ensureDefaultProfile(),case:this.getProfessorCase(professorCaseId)};}
-  getOpportunityAiContext(opportunityId:string,limit=25){const opportunity=this.getOpportunity(opportunityId);if(!opportunity)throw new Error('Academic opportunity not found');return{applicant:this.ensureDefaultProfile(),opportunity,evidence:this.listEvidence('OPPORTUNITY',opportunityId).slice(0,limit).map(({id,claimType,claim,excerpt,sourceUrl,classification,confidence})=>({id,claimType,claim,excerpt,sourceUrl,classification,confidence})),professorCases:this.db.select().from(professorCases).where(eq(professorCases.opportunityId,opportunityId)).all().slice(0,limit)};}
-  getProfessorAiContext(professorCaseId:string,limit=25){const row=this.db.select().from(professorCases).where(eq(professorCases.id,professorCaseId)).get();if(!row)throw new Error('Professor case not found');const professor=this.getProfessor(row.professorId);if(!professor)throw new Error('Professor not found');return{applicant:this.ensureDefaultProfile(),professorCase:{id:row.id,opportunityId:row.opportunityId,status:row.status,notes:row.notes},professor,evidence:this.listEvidence('PROFESSOR',row.professorId).slice(0,limit).map(({id,claimType,claim,excerpt,sourceUrl,classification,confidence})=>({id,claimType,claim,excerpt,sourceUrl,classification,confidence}))};}
-  findCachedAcademicAi(task:string,input:unknown,ttlDays:number){const cutoff=new Date(Date.now()-ttlDays*86400000).toISOString();const row=this.db.select().from(aiRuns).where(and(eq(aiRuns.task,task),eq(aiRuns.inputHash,contentHash(input)),eq(aiRuns.status,'COMPLETED'),gte(aiRuns.createdAt,cutoff))).orderBy(desc(aiRuns.createdAt)).get();return row?.outputJson?{id:row.id,output:parse<unknown>(row.outputJson),provider:row.provider,model:row.model,createdAt:row.createdAt}:null;}
-  saveAcademicAiRun(input:{entityType:string;entityId:string;task:string;provider:string;model:string;promptVersion:string;aiInput:unknown;output?:unknown;status:string;latencyMs:number;promptTokens?:number|null;completionTokens?:number|null;error?:unknown;ttlDays:number}){const timestamp=now(),id=randomUUID();this.db.insert(aiRuns).values({id,entityType:input.entityType,entityId:input.entityId,task:input.task,provider:input.provider,model:input.model,promptVersion:input.promptVersion,inputHash:contentHash(input.aiInput),inputJson:JSON.stringify(input.aiInput),outputJson:input.output===undefined?null:JSON.stringify(input.output),status:input.status,latencyMs:input.latencyMs,promptTokens:input.promptTokens,completionTokens:input.completionTokens,errorJson:input.error===undefined?null:JSON.stringify({message:input.error instanceof Error?input.error.message:String(input.error)}),expiresAt:new Date(Date.now()+input.ttlDays*86400000).toISOString(),createdAt:timestamp}).run();return this.db.select().from(aiRuns).where(eq(aiRuns.id,id)).get()!;}
-  listAcademicAiRuns(entityType:string,entityId:string){return this.db.select({id:aiRuns.id,task:aiRuns.task,provider:aiRuns.provider,model:aiRuns.model,status:aiRuns.status,outputJson:aiRuns.outputJson,latencyMs:aiRuns.latencyMs,promptTokens:aiRuns.promptTokens,completionTokens:aiRuns.completionTokens,createdAt:aiRuns.createdAt}).from(aiRuns).where(and(eq(aiRuns.entityType,entityType),eq(aiRuns.entityId,entityId))).orderBy(desc(aiRuns.createdAt)).all().map(row=>({...row,output:row.outputJson?parse(row.outputJson):null,outputJson:undefined}));}
-  aiRequestsToday(){const start=new Date();start.setUTCHours(0,0,0,0);return Number((this.connection.sqlite.prepare(`SELECT count(*) count FROM ai_runs WHERE created_at>=? AND status IN ('COMPLETED','FAILED')`).get(start.toISOString()) as {count:number}).count);}
-  queueAcademicAi(task:'ANALYZE_ACADEMIC_OPPORTUNITY_AI'|'ANALYZE_PROFESSOR_AI'|'GENERATE_ACADEMIC_OUTREACH_AI',entityId:string,force=false){const bucket=Math.floor(Date.now()/300_000);const key=`academic-ai:${task}:${entityId}:${force?Date.now():bucket}`;return this.enqueue(task,task==='ANALYZE_ACADEMIC_OPPORTUNITY_AI'?{opportunityId:entityId,force}:{professorCaseId:entityId,force},key,85);}
-  applyProfessorAnalysis(professorCaseId:string,analysis:{plainEnglishResearchSummary:string;applicantOverlap:Array<{text:string}>;relevantExperience:Array<{text:string}>;possibleResearchDirections:Array<{text:string}>;concerns:Array<{text:string}>;confidence:number}){this.db.update(professorCases).set({matchSummary:analysis.plainEnglishResearchSummary,matchingInterestsJson:JSON.stringify(analysis.applicantOverlap.map(item=>item.text)),matchingExperienceJson:JSON.stringify(analysis.relevantExperience.map(item=>item.text)),researchIdeasJson:JSON.stringify(analysis.possibleResearchDirections.map(item=>item.text)),weaknessesJson:JSON.stringify(analysis.concerns.map(item=>item.text)),matchConfidence:analysis.confidence,updatedAt:now()}).where(eq(professorCases.id,professorCaseId)).run();}
-  saveGeneratedAcademicDraft(professorCaseId:string,inputHash:string,draft:{subjects:string[];email:string;evidenceIds:string[]}){const context=this.getProfessorAiContext(professorCaseId,1);return this.saveOutreachDraft({professorCaseId,...(context.professorCase.opportunityId?{opportunityId:context.professorCase.opportunityId}:{}),...(context.professor.publicEmail?{recipientEmail:context.professor.publicEmail}:{}),subjects:draft.subjects,textBody:draft.email,evidenceIds:draft.evidenceIds,idempotencyKey:`academic-ai-draft:${professorCaseId}:${inputHash}`});}
-  private enqueue(type:string,payload:unknown,idempotencyKey:string,priority=0){const timestamp=now(),id=randomUUID();this.connection.sqlite.prepare(`INSERT OR IGNORE INTO worker_jobs(id,type,payload_json,status,priority,attempts,max_attempts,run_after,idempotency_key,created_at) VALUES(?,?,?,'PENDING',?,0,3,?,?,?)`).run(id,type,JSON.stringify(payload),priority,timestamp,idempotencyKey,timestamp);return this.connection.sqlite.prepare(`SELECT * FROM worker_jobs WHERE idempotency_key=?`).get(idempotencyKey);}
+  saveOutreachDraft(input: {
+    professorCaseId: string;
+    opportunityId?: string;
+    recipientEmail?: string;
+    subjects: string[];
+    textBody: string;
+    selectedDocumentIds?: string[];
+    evidenceIds?: string[];
+    idempotencyKey: string;
+  }) {
+    const timestamp = now(),
+      id = randomUUID();
+    this.db
+      .insert(academicOutreach)
+      .values({
+        id,
+        professorCaseId: input.professorCaseId,
+        opportunityId: input.opportunityId,
+        recipientEmail: input.recipientEmail,
+        subjectsJson: JSON.stringify(input.subjects),
+        textBody: input.textBody,
+        selectedDocumentIdsJson: JSON.stringify(
+          input.selectedDocumentIds ?? [],
+        ),
+        evidenceIdsJson: JSON.stringify(input.evidenceIds ?? []),
+        idempotencyKey: input.idempotencyKey,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .onConflictDoNothing()
+      .run();
+    return this.db
+      .select()
+      .from(academicOutreach)
+      .where(eq(academicOutreach.idempotencyKey, input.idempotencyKey))
+      .get()!;
+  }
+  approveOutreach(id: string) {
+    const row = this.db
+      .select()
+      .from(academicOutreach)
+      .where(eq(academicOutreach.id, id))
+      .get();
+    if (!row) throw new Error("Academic outreach not found");
+    if (!row.recipientEmail) throw new Error("Recipient email is required");
+    const documentIds = parse<string[]>(row.selectedDocumentIdsJson);
+    if (documentIds.length) {
+      const found = this.db
+        .select({ id: academicDocuments.id })
+        .from(academicDocuments)
+        .where(sql`${academicDocuments.id} in ${documentIds}`)
+        .all();
+      if (found.length !== documentIds.length)
+        throw new Error("One or more attachments are unavailable");
+    }
+    const timestamp = now();
+    this.db
+      .update(academicOutreach)
+      .set({ status: "APPROVED", approvedAt: timestamp, updatedAt: timestamp })
+      .where(eq(academicOutreach.id, id))
+      .run();
+    return { ...row, status: "APPROVED", approvedAt: timestamp };
+  }
+  queueOutreach(id: string) {
+    const row = this.db
+      .select()
+      .from(academicOutreach)
+      .where(eq(academicOutreach.id, id))
+      .get();
+    if (!row) throw new Error("Academic outreach not found");
+    if (row.status !== "APPROVED")
+      throw new Error(
+        "Academic outreach must be explicitly approved before sending",
+      );
+    const existing = this.connection.sqlite
+      .prepare(`SELECT id,status FROM worker_jobs WHERE idempotency_key=?`)
+      .get(`academic-send:${row.idempotencyKey}`);
+    if (existing) return existing;
+    return this.enqueue(
+      "SEND_ACADEMIC_OUTREACH",
+      { outreachId: id },
+      `academic-send:${row.idempotencyKey}`,
+      100,
+    );
+  }
+  batchQueueApproved() {
+    return this.db
+      .select()
+      .from(academicOutreach)
+      .where(eq(academicOutreach.status, "APPROVED"))
+      .all()
+      .map((row) => this.queueOutreach(row.id));
+  }
+  listOutreach(status?: string) {
+    return status
+      ? this.db
+          .select()
+          .from(academicOutreach)
+          .where(eq(academicOutreach.status, status))
+          .orderBy(desc(academicOutreach.createdAt))
+          .all()
+      : this.db
+          .select()
+          .from(academicOutreach)
+          .orderBy(desc(academicOutreach.createdAt))
+          .all();
+  }
+  markFollowup(id: string, followupAt: string | null) {
+    this.db
+      .update(academicOutreach)
+      .set({ followupAt, updatedAt: now() })
+      .where(eq(academicOutreach.id, id))
+      .run();
+    return this.db
+      .select()
+      .from(academicOutreach)
+      .where(eq(academicOutreach.id, id))
+      .get();
+  }
+  saveDocument(input: {
+    applicantProfileId: string;
+    kind: string;
+    name: string;
+    storageKey: string;
+    originalFilename: string;
+    mimeType: string;
+    sizeBytes: number;
+    sha256: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    const timestamp = now(),
+      id = randomUUID();
+    this.db
+      .insert(academicDocuments)
+      .values({
+        id,
+        ...input,
+        metadataJson: JSON.stringify(input.metadata ?? {}),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+    return this.db
+      .select()
+      .from(academicDocuments)
+      .where(eq(academicDocuments.id, id))
+      .get()!;
+  }
+  listDocuments() {
+    return this.db
+      .select({
+        id: academicDocuments.id,
+        kind: academicDocuments.kind,
+        name: academicDocuments.name,
+        originalFilename: academicDocuments.originalFilename,
+        mimeType: academicDocuments.mimeType,
+        sizeBytes: academicDocuments.sizeBytes,
+        version: academicDocuments.version,
+        active: academicDocuments.active,
+        createdAt: academicDocuments.createdAt,
+      })
+      .from(academicDocuments)
+      .orderBy(desc(academicDocuments.createdAt))
+      .all();
+  }
+  getDocuments(ids: string[]) {
+    if (!ids.length) return [];
+    return this.connection.sqlite
+      .prepare(
+        `SELECT id,storage_key,original_filename,mime_type,size_bytes FROM academic_documents WHERE active=1 AND id IN (${ids.map(() => "?").join(",")})`,
+      )
+      .all(...ids) as Array<{
+      id: string;
+      storage_key: string;
+      original_filename: string;
+      mime_type: string;
+      size_bytes: number;
+    }>;
+  }
+  queueResearchUrl(input: {
+    url: string;
+    entityType?: string;
+    entityId?: string;
+    official?: boolean;
+  }) {
+    const canonicalUrl = new URL(input.url).toString();
+    const source = this.saveSource({
+      kind: "MANUAL_URL",
+      name: new URL(input.url).hostname,
+      url: input.url,
+      canonicalUrl,
+      official: input.official ?? false,
+      ...(input.entityType ? { entityType: input.entityType } : {}),
+      ...(input.entityId ? { entityId: input.entityId } : {}),
+    });
+    return {
+      source,
+      job: this.enqueue(
+        "RESEARCH_ACADEMIC_URL",
+        { sourceId: source.id },
+        `academic-research:${source.id}:${Date.now()}`,
+        80,
+      ),
+    };
+  }
+  queueDueSourceRefreshes() {
+    const timestamp = now(),
+      bucket = timestamp.slice(0, 13);
+    return this.db
+      .select()
+      .from(academicSources)
+      .where(
+        and(
+          eq(academicSources.enabled, true),
+          sql`${academicSources.nextRefreshAt} is not null and ${academicSources.nextRefreshAt} <= ${timestamp}`,
+        ),
+      )
+      .all()
+      .map((source) =>
+        this.enqueue(
+          "RESEARCH_ACADEMIC_URL",
+          { sourceId: source.id },
+          `academic-refresh:${source.id}:${bucket}`,
+          40,
+        ),
+      );
+  }
+  getSource(id: string) {
+    return (
+      this.db
+        .select()
+        .from(academicSources)
+        .where(eq(academicSources.id, id))
+        .get() ?? null
+    );
+  }
+  beginAcademicResearch(sourceId: string) {
+    const source = this.getSource(sourceId);
+    if (!source) throw new Error("Academic source not found");
+    const timestamp = now(),
+      id = randomUUID();
+    this.db
+      .insert(academicResearchRuns)
+      .values({
+        id,
+        sourceId,
+        entityType: source.entityType,
+        entityId: source.entityId,
+        trigger: "WORKER",
+        status: "RUNNING",
+        startedAt: timestamp,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+    return { id, source };
+  }
+  finishAcademicResearch(
+    runId: string,
+    sourceId: string,
+    pages: Array<{
+      contentHash: string;
+      title: string | null;
+      textContent: string;
+      httpStatus: number | null;
+      url: string;
+    }>,
+  ) {
+    const timestamp = now();
+    const source = this.getSource(sourceId);
+    if (!source) throw new Error("Academic source not found");
+    let changed = false;
+    for (const page of pages) {
+      const existing = this.db
+        .select()
+        .from(academicPageVersions)
+        .where(
+          and(
+            eq(academicPageVersions.sourceId, sourceId),
+            eq(academicPageVersions.contentHash, page.contentHash),
+          ),
+        )
+        .get();
+      if (!existing) {
+        changed = true;
+        this.db
+          .insert(academicPageVersions)
+          .values({
+            id: randomUUID(),
+            sourceId,
+            researchRunId: runId,
+            contentHash: page.contentHash,
+            title: page.title,
+            textContent: page.textContent,
+            httpStatus: page.httpStatus,
+            retrievedAt: timestamp,
+            metadataJson: JSON.stringify({ url: page.url }),
+            createdAt: timestamp,
+          })
+          .run();
+      }
+    }
+    this.db
+      .update(academicResearchRuns)
+      .set({
+        status: "COMPLETED",
+        changed,
+        completedAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .where(eq(academicResearchRuns.id, runId))
+      .run();
+    this.db
+      .update(academicSources)
+      .set({
+        lastRetrievedAt: timestamp,
+        nextRefreshAt: new Date(Date.now() + 168 * 3600000).toISOString(),
+        lastContentHash: pages[0]?.contentHash,
+        lastStatus: changed ? "CHANGED" : "UNCHANGED",
+        updatedAt: timestamp,
+      })
+      .where(eq(academicSources.id, sourceId))
+      .run();
+    return { runId, pages: pages.length, changed };
+  }
+  beginAcademicSend(id: string, limits: { hourly: number; daily: number }) {
+    const row = this.db
+      .select()
+      .from(academicOutreach)
+      .where(eq(academicOutreach.id, id))
+      .get();
+    if (!row || row.status !== "APPROVED")
+      throw new Error("Academic outreach is not approved");
+    const sent = this.connection.sqlite
+      .prepare(
+        `SELECT (SELECT count(*) FROM academic_outreach WHERE sent_at>=?) hourly,(SELECT count(*) FROM academic_outreach WHERE sent_at>=?) daily`,
+      )
+      .get(
+        new Date(Date.now() - 3600000).toISOString(),
+        new Date(Date.now() - 86400000).toISOString(),
+      ) as { hourly: number; daily: number };
+    if (sent.hourly >= limits.hourly || sent.daily >= limits.daily)
+      throw new Error("Academic email send limit reached");
+    this.db
+      .update(academicOutreach)
+      .set({ status: "SENDING", updatedAt: now() })
+      .where(eq(academicOutreach.id, id))
+      .run();
+    return {
+      ...row,
+      subjects: parse<string[]>(row.subjectsJson),
+      documentIds: parse<string[]>(row.selectedDocumentIdsJson),
+    };
+  }
+  finishAcademicSend(
+    id: string,
+    result: { messageId: string; response?: unknown },
+  ) {
+    const timestamp = now();
+    this.db
+      .update(academicOutreach)
+      .set({
+        status: "SENT",
+        sentAt: timestamp,
+        providerMessageId: result.messageId,
+        updatedAt: timestamp,
+      })
+      .where(eq(academicOutreach.id, id))
+      .run();
+    return { status: "SENT", sentAt: timestamp, messageId: result.messageId };
+  }
+  failAcademicSend(id: string, error: unknown) {
+    this.db
+      .update(academicOutreach)
+      .set({
+        status: "APPROVED",
+        errorJson: JSON.stringify({
+          message: error instanceof Error ? error.message : String(error),
+        }),
+        updatedAt: now(),
+      })
+      .where(eq(academicOutreach.id, id))
+      .run();
+  }
+  listDeadlines(days = 90) {
+    const from = now(),
+      to = new Date(Date.now() + days * 86400000).toISOString();
+    return this.db
+      .select()
+      .from(applicationDeadlines)
+      .where(
+        and(
+          gte(applicationDeadlines.deadlineAt, from),
+          sql`${applicationDeadlines.deadlineAt} <= ${to}`,
+        ),
+      )
+      .orderBy(applicationDeadlines.deadlineAt)
+      .all();
+  }
+  getApplicationCase(opportunityId: string) {
+    return (
+      this.db
+        .select()
+        .from(applicationCases)
+        .where(eq(applicationCases.opportunityId, opportunityId))
+        .get() ?? null
+    );
+  }
+  getFunding(id: string) {
+    return (
+      this.db
+        .select()
+        .from(fundingOpportunities)
+        .where(eq(fundingOpportunities.id, id))
+        .get() ?? null
+    );
+  }
+  dashboard() {
+    const opportunities = this.listOpportunities(8);
+    const counts = this.connection.sqlite
+      .prepare(
+        `SELECT (SELECT count(*) FROM academic_opportunities WHERE status NOT IN ('ARCHIVED','REJECTED')) active_opportunities,(SELECT count(*) FROM professor_cases WHERE status='OUTREACH_READY') professors_ready,(SELECT count(*) FROM academic_outreach WHERE status='DRAFT') drafts_awaiting_approval,(SELECT count(*) FROM academic_outreach WHERE followup_at<=datetime('now') AND reply_status='NONE') followups_due,(SELECT count(*) FROM academic_sources WHERE last_status='CHANGED') changed_sources`,
+      )
+      .get();
+    const recentAnalyses = this.db
+      .select({
+        id: aiRuns.id,
+        task: aiRuns.task,
+        provider: aiRuns.provider,
+        model: aiRuns.model,
+        status: aiRuns.status,
+        entityType: aiRuns.entityType,
+        entityId: aiRuns.entityId,
+        createdAt: aiRuns.createdAt,
+      })
+      .from(aiRuns)
+      .where(sql`${aiRuns.entityType} is not null`)
+      .orderBy(desc(aiRuns.createdAt))
+      .limit(6)
+      .all();
+    return {
+      counts,
+      opportunities,
+      deadlines: this.listDeadlines(60),
+      professorCases: this.listProfessorCases().slice(0, 6),
+      recentAnalyses,
+    };
+  }
+  getResearchContext(professorCaseId: string) {
+    return {
+      applicant: this.ensureDefaultProfile(),
+      case: this.getProfessorCase(professorCaseId),
+    };
+  }
+  getOpportunityAiContext(opportunityId: string, limit = 25) {
+    const opportunity = this.getOpportunity(opportunityId);
+    if (!opportunity) throw new Error("Academic opportunity not found");
+    return {
+      applicant: this.ensureDefaultProfile(),
+      opportunity,
+      evidence: this.listEvidence("OPPORTUNITY", opportunityId)
+        .slice(0, limit)
+        .map(
+          ({
+            id,
+            claimType,
+            claim,
+            excerpt,
+            sourceUrl,
+            classification,
+            confidence,
+          }) => ({
+            id,
+            claimType,
+            claim,
+            excerpt,
+            sourceUrl,
+            classification,
+            confidence,
+          }),
+        ),
+      professorCases: this.db
+        .select()
+        .from(professorCases)
+        .where(eq(professorCases.opportunityId, opportunityId))
+        .all()
+        .slice(0, limit),
+    };
+  }
+  getProfessorAiContext(professorCaseId: string, limit = 25) {
+    const row = this.db
+      .select()
+      .from(professorCases)
+      .where(eq(professorCases.id, professorCaseId))
+      .get();
+    if (!row) throw new Error("Professor case not found");
+    const professor = this.getProfessor(row.professorId);
+    if (!professor) throw new Error("Professor not found");
+    return {
+      applicant: this.ensureDefaultProfile(),
+      professorCase: {
+        id: row.id,
+        opportunityId: row.opportunityId,
+        status: row.status,
+        notes: row.notes,
+      },
+      professor,
+      evidence: this.listEvidence("PROFESSOR", row.professorId)
+        .slice(0, limit)
+        .map(
+          ({
+            id,
+            claimType,
+            claim,
+            excerpt,
+            sourceUrl,
+            classification,
+            confidence,
+          }) => ({
+            id,
+            claimType,
+            claim,
+            excerpt,
+            sourceUrl,
+            classification,
+            confidence,
+          }),
+        ),
+    };
+  }
+  findCachedAcademicAi(task: string, input: unknown, ttlDays: number) {
+    const cutoff = new Date(Date.now() - ttlDays * 86400000).toISOString();
+    const row = this.db
+      .select()
+      .from(aiRuns)
+      .where(
+        and(
+          eq(aiRuns.task, task),
+          eq(aiRuns.inputHash, contentHash(input)),
+          eq(aiRuns.status, "COMPLETED"),
+          gte(aiRuns.createdAt, cutoff),
+        ),
+      )
+      .orderBy(desc(aiRuns.createdAt))
+      .get();
+    return row?.outputJson
+      ? {
+          id: row.id,
+          output: parse<unknown>(row.outputJson),
+          provider: row.provider,
+          model: row.model,
+          createdAt: row.createdAt,
+        }
+      : null;
+  }
+  saveAcademicAiRun(input: {
+    entityType: string;
+    entityId: string;
+    task: string;
+    provider: string;
+    model: string;
+    promptVersion: string;
+    aiInput: unknown;
+    output?: unknown;
+    status: string;
+    latencyMs: number;
+    promptTokens?: number | null;
+    completionTokens?: number | null;
+    error?: unknown;
+    ttlDays: number;
+  }) {
+    const timestamp = now(),
+      id = randomUUID();
+    this.db
+      .insert(aiRuns)
+      .values({
+        id,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        task: input.task,
+        provider: input.provider,
+        model: input.model,
+        promptVersion: input.promptVersion,
+        inputHash: contentHash(input.aiInput),
+        inputJson: JSON.stringify(input.aiInput),
+        outputJson:
+          input.output === undefined ? null : JSON.stringify(input.output),
+        status: input.status,
+        latencyMs: input.latencyMs,
+        promptTokens: input.promptTokens,
+        completionTokens: input.completionTokens,
+        errorJson:
+          input.error === undefined
+            ? null
+            : JSON.stringify({
+                message:
+                  input.error instanceof Error
+                    ? input.error.message
+                    : String(input.error),
+              }),
+        expiresAt: new Date(
+          Date.now() + input.ttlDays * 86400000,
+        ).toISOString(),
+        createdAt: timestamp,
+      })
+      .run();
+    return this.db.select().from(aiRuns).where(eq(aiRuns.id, id)).get()!;
+  }
+  listAcademicAiRuns(entityType: string, entityId: string) {
+    return this.db
+      .select({
+        id: aiRuns.id,
+        task: aiRuns.task,
+        provider: aiRuns.provider,
+        model: aiRuns.model,
+        status: aiRuns.status,
+        outputJson: aiRuns.outputJson,
+        latencyMs: aiRuns.latencyMs,
+        promptTokens: aiRuns.promptTokens,
+        completionTokens: aiRuns.completionTokens,
+        createdAt: aiRuns.createdAt,
+      })
+      .from(aiRuns)
+      .where(
+        and(eq(aiRuns.entityType, entityType), eq(aiRuns.entityId, entityId)),
+      )
+      .orderBy(desc(aiRuns.createdAt))
+      .all()
+      .map((row) => ({
+        ...row,
+        output: row.outputJson ? parse(row.outputJson) : null,
+        outputJson: undefined,
+      }));
+  }
+  aiRequestsToday() {
+    const start = new Date();
+    start.setUTCHours(0, 0, 0, 0);
+    return Number(
+      (
+        this.connection.sqlite
+          .prepare(
+            `SELECT count(*) count FROM ai_runs WHERE created_at>=? AND status IN ('COMPLETED','FAILED')`,
+          )
+          .get(start.toISOString()) as { count: number }
+      ).count,
+    );
+  }
+  queueAcademicAi(
+    task:
+      | "ANALYZE_ACADEMIC_OPPORTUNITY_AI"
+      | "ANALYZE_PROFESSOR_AI"
+      | "GENERATE_ACADEMIC_OUTREACH_AI",
+    entityId: string,
+    force = false,
+  ) {
+    const bucket = Math.floor(Date.now() / 300_000);
+    const key = `academic-ai:${task}:${entityId}:${force ? Date.now() : bucket}`;
+    return this.enqueue(
+      task,
+      task === "ANALYZE_ACADEMIC_OPPORTUNITY_AI"
+        ? { opportunityId: entityId, force }
+        : { professorCaseId: entityId, force },
+      key,
+      85,
+    );
+  }
+  applyProfessorAnalysis(
+    professorCaseId: string,
+    analysis: {
+      plainEnglishResearchSummary: string;
+      applicantOverlap: Array<{ text: string }>;
+      relevantExperience: Array<{ text: string }>;
+      possibleResearchDirections: Array<{ text: string }>;
+      concerns: Array<{ text: string }>;
+      confidence: number;
+    },
+  ) {
+    this.db
+      .update(professorCases)
+      .set({
+        matchSummary: analysis.plainEnglishResearchSummary,
+        matchingInterestsJson: JSON.stringify(
+          analysis.applicantOverlap.map((item) => item.text),
+        ),
+        matchingExperienceJson: JSON.stringify(
+          analysis.relevantExperience.map((item) => item.text),
+        ),
+        researchIdeasJson: JSON.stringify(
+          analysis.possibleResearchDirections.map((item) => item.text),
+        ),
+        weaknessesJson: JSON.stringify(
+          analysis.concerns.map((item) => item.text),
+        ),
+        matchConfidence: analysis.confidence,
+        updatedAt: now(),
+      })
+      .where(eq(professorCases.id, professorCaseId))
+      .run();
+  }
+  saveGeneratedAcademicDraft(
+    professorCaseId: string,
+    inputHash: string,
+    draft: { subjects: string[]; email: string; evidenceIds: string[] },
+  ) {
+    const context = this.getProfessorAiContext(professorCaseId, 1);
+    return this.saveOutreachDraft({
+      professorCaseId,
+      ...(context.professorCase.opportunityId
+        ? { opportunityId: context.professorCase.opportunityId }
+        : {}),
+      ...(context.professor.publicEmail
+        ? { recipientEmail: context.professor.publicEmail }
+        : {}),
+      subjects: draft.subjects,
+      textBody: draft.email,
+      evidenceIds: draft.evidenceIds,
+      idempotencyKey: `academic-ai-draft:${professorCaseId}:${inputHash}`,
+    });
+  }
+  private enqueue(
+    type: string,
+    payload: unknown,
+    idempotencyKey: string,
+    priority = 0,
+  ) {
+    const timestamp = now(),
+      id = randomUUID();
+    this.connection.sqlite
+      .prepare(
+        `INSERT OR IGNORE INTO worker_jobs(id,type,payload_json,status,priority,attempts,max_attempts,run_after,idempotency_key,created_at) VALUES(?,?,?,'PENDING',?,0,3,?,?,?)`,
+      )
+      .run(
+        id,
+        type,
+        JSON.stringify(payload),
+        priority,
+        timestamp,
+        idempotencyKey,
+        timestamp,
+      );
+    return this.connection.sqlite
+      .prepare(`SELECT * FROM worker_jobs WHERE idempotency_key=?`)
+      .get(idempotencyKey);
+  }
 }

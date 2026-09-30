@@ -25,6 +25,8 @@ export class CompanyCrawler {
     return results;
   }
 
+  async crawlUrl(url:string):Promise<CrawlResult>{const parsed=new URL(url);if(!['http:','https:'].includes(parsed.protocol))throw new Error('Only HTTP(S) URLs are crawlable');assertSafeHostname(parsed.hostname);const root=`${parsed.protocol}//${parsed.host}/`;const robots=await this.loadRobots(root);if(!robots.allowed(url))return failed(url,'Blocked by robots.txt',0);return this.fetchPage(url,100);}
+
   private async fetchPage(url: string, relevanceScore: number): Promise<CrawlResult> {
     const started = Date.now();
     try {
