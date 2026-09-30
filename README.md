@@ -2,6 +2,10 @@
 
 Northstar now includes **Academic Intelligence**, a private evidence-backed research operating system for Abdul Rehman. It preserves the existing client/job GTM funnels and adds separate universities, programs, funding, professor cases, eligibility, scoring, applications, documents, outreach, source history, and MCP tools. See [Academic Intelligence](docs/academic-intelligence.md).
 
+The visible application is now academic-first and opens directly into Abdul's personal scholarship and research workspace. Its primary navigation covers search, opportunities, professors, universities, scholarships, shortlist, applications, outreach, deadlines, profile, and official sources. Legacy GTM/client/job modules remain isolated internally for backward compatibility and are not shown in the primary interface.
+
+Academic searches persist the selected countries, degree, funding requirement, research areas, keyword, result filter, and sort order. Submitting a search returns immediately, creates a durable `RUN_ACADEMIC_SEARCH` job, refreshes configured official sources, ranks existing canonical opportunities against the latest applicant profile, and queues bounded Groq analysis for the strongest cases.
+
 A local-first opportunity intelligence system for U.S. AI, LLM, Python, full-stack, SaaS, and automation work. Northstar keeps client acquisition and job acquisition as separate funnels while preserving shared source evidence and complete history.
 
 ## Milestone 1: Opportunity Intelligence Engine

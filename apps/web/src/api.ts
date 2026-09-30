@@ -81,10 +81,20 @@ export type AIHealthReport={status:'available'|'unavailable';activeProvider:stri
 export async function getAIHealth(){const response=await fetch('/health/ai');if(!response.ok)throw new Error('Could not load AI health');return response.json() as Promise<AIHealthReport>;}
 async function academic<T>(path:string,init?:RequestInit){const response=await fetch(`/api/academic${path}`,init);if(!response.ok)throw new Error(await errorMessage(response));return(await response.json() as {data:T}).data;}
 export const getAcademicToday=()=>academic<AcademicToday>('/today');
-export const getAcademicOpportunities=()=>academic<AcademicOpportunity[]>('/opportunities');
+export type AcademicSearchFilters={countries:string[];degree:'PHD'|'MS_MSC'|'MS_TO_PHD'|'RESEARCH_MASTERS'|'RESEARCH_FELLOWSHIP'|'GRADUATE_RESEARCH'|'ANY';funding:'FULLY_FUNDED'|'TUITION_STIPEND'|'TUITION_FREE'|'PARTIAL'|'AVAILABLE'|'UNKNOWN'|'ANY';researchAreas:string[];keyword:string;status:string;sort:'BEST_MATCH'|'FUNDING'|'DEADLINE'|'NEWEST'|'COUNTRY'|'PROFESSOR_MATCH'};
+export type AcademicSearch={id:string;status:string;resultCount:number;createdAt:string;filters:AcademicSearchFilters};
+export const getAcademicOpportunities=(filters?:AcademicSearchFilters)=>academic<AcademicOpportunity[]>(`/opportunities${filters?`?filters=${encodeURIComponent(JSON.stringify(filters))}`:''}`);
+export const getAcademicOpportunity=(id:string)=>academic<Record<string,unknown>>(`/opportunities/${id}`);
 export const getAcademicUniversities=()=>academic<Array<{id:string;canonicalName:string;country:string;city:string|null;officialUrl:string|null;confidence:number}>>('/universities');
 export const getProfessorCases=()=>academic<Array<Record<string,unknown>>>('/professor-cases');
 export const getAcademicProfile=()=>academic<AcademicProfile>('/profile');
 export const updateAcademicProfile=(profile:Omit<AcademicProfile,'id'|'updatedAt'>)=>academic<AcademicProfile>('/profile',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(profile)});
 export const getAcademicDeadlines=()=>academic<Array<{id:string;kind:string;deadlineAt:string;opportunityId:string;status:string}>>('/deadlines');
 export const getAcademicOutreach=()=>academic<Array<Record<string,unknown>>>('/outreach');
+export const getSearchPreferences=()=>academic<AcademicSearchFilters>('/search-preferences');
+export const getAcademicSearches=()=>academic<AcademicSearch[]>('/searches');
+export const createAcademicSearch=(filters:AcademicSearchFilters)=>academic<{search:AcademicSearch;job:unknown}>('/searches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(filters)});
+export const getAcademicShortlist=()=>academic<Array<{id:string;entityType:string;entityId:string;entity:Record<string,unknown> | null}>>('/shortlist');
+export const saveAcademicShortlist=(entityType:'OPPORTUNITY'|'UNIVERSITY'|'PROFESSOR',entityId:string)=>academic('/shortlist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({entityType,entityId})});
+export const getProfessorCase=(id:string)=>academic<Record<string,unknown>>(`/professor-cases/${id}`);
+export const generateProfessorDraft=(id:string)=>academic(`/professor-cases/${id}/generate-outreach`,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
