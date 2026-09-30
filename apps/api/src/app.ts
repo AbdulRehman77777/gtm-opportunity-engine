@@ -23,7 +23,7 @@ export async function buildApp(options: { connection?: DatabaseConnection; logge
   const finalRepository=new FinalRepository(connection);
   const academicRepository=new AcademicRepository(connection);
   const aiProvider = options.aiProvider ?? createAIProvider(config);
-  const ollamaProvider = new OllamaProvider(config.OLLAMA_BASE_URL,config.OLLAMA_MODEL);
+  const ollamaProvider = aiProvider.name==='ollama' ? aiProvider : new OllamaProvider(config.OLLAMA_BASE_URL,config.OLLAMA_MODEL);
   const smtpProvider=new SMTPProvider({host:config.SMTP_HOST,port:config.SMTP_PORT,secure:config.SMTP_SECURE,user:config.SMTP_USER,password:config.SMTP_PASSWORD});
   const imapProvider=new ImapInboxProvider({host:config.IMAP_HOST,port:config.IMAP_PORT,secure:config.IMAP_SECURE,user:config.IMAP_USER,password:config.IMAP_PASSWORD});
   const app = Fastify({ logger: options.logger === false ? false : { level: config.LOG_LEVEL } });
