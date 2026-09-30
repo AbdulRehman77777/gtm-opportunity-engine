@@ -406,3 +406,11 @@ export const academicSignals = sqliteTable('academic_signals', {
 export const academicWatchlists = sqliteTable('academic_watchlists', {
   id:text('id').primaryKey(), name:text('name').notNull(), queryJson:text('query_json').notNull(), enabled:integer('enabled',{mode:'boolean'}).notNull().default(true), refreshIntervalHours:integer('refresh_interval_hours').notNull().default(168), lastRunAt:text('last_run_at'), nextRunAt:text('next_run_at'), ...timestamps
 });
+
+export const academicSearches = sqliteTable('academic_searches', {
+  id:text('id').primaryKey(), applicantProfileId:text('applicant_profile_id').notNull().references(()=>academicApplicantProfiles.id), filtersJson:text('filters_json').notNull(), status:text('status').notNull().default('QUEUED'), resultCount:integer('result_count').notNull().default(0), startedAt:text('started_at'), completedAt:text('completed_at'), errorJson:text('error_json'), ...timestamps
+}, table=>[index('idx_academic_searches_profile_created').on(table.applicantProfileId,table.createdAt),index('idx_academic_searches_status').on(table.status)]);
+
+export const academicShortlist = sqliteTable('academic_shortlist', {
+  id:text('id').primaryKey(), entityType:text('entity_type').notNull(), entityId:text('entity_id').notNull(), notes:text('notes'), createdAt:text('created_at').notNull(), updatedAt:text('updated_at').notNull()
+}, table=>[uniqueIndex('idx_academic_shortlist_entity').on(table.entityType,table.entityId),index('idx_academic_shortlist_created').on(table.createdAt)]);

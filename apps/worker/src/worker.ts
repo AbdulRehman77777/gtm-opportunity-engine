@@ -87,6 +87,7 @@ export class Worker {
         case 'ANALYZE_ACADEMIC_OPPORTUNITY_AI': result = await this.analyzeAcademicOpportunity(String(payload.opportunityId),Boolean(payload.force)); break;
         case 'ANALYZE_PROFESSOR_AI': result = await this.analyzeProfessor(String(payload.professorCaseId),Boolean(payload.force)); break;
         case 'GENERATE_ACADEMIC_OUTREACH_AI': result = await this.generateAcademicOutreach(String(payload.professorCaseId),Boolean(payload.force)); break;
+        case 'RUN_ACADEMIC_SEARCH': result = this.academicRepository.runAcademicSearch(String(payload.searchId)); break;
         default: throw new Error(`Unknown worker job type: ${queued.type}`);
       }
       this.repository.completeWorkerJob(queued.id, result);

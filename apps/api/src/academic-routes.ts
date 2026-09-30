@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { applicantProfileInputSchema, eligibilityStatusSchema, evidenceInputSchema, fundingCategorySchema, fundingInputSchema, opportunityInputSchema, professorInputSchema, programInputSchema, universityInputSchema } from '@gtm/academic';
+import { academicSearchFiltersSchema, applicantProfileInputSchema, eligibilityStatusSchema, evidenceInputSchema, fundingCategorySchema, fundingInputSchema, opportunityInputSchema, professorInputSchema, programInputSchema, universityInputSchema } from '@gtm/academic';
 import type { AcademicRepository } from '@gtm/db';
 import type { AppConfig } from '@gtm/shared';
 import { z } from 'zod';
@@ -21,7 +21,7 @@ export function registerAcademicRoutes(app:FastifyInstance,repository:AcademicRe
   app.get('/api/academic/professor-cases',async()=>({data:repository.listProfessorCases()}));
   app.get('/api/academic/professor-cases/:id',async(request,reply)=>{const{id}=z.object({id:uuid}).parse(request.params);const data=repository.getProfessorCase(id);return data?{data}:reply.status(404).send({error:'PROFESSOR_CASE_NOT_FOUND'});});
   app.post('/api/academic/professor-cases',async(request,reply)=>{const body=z.object({professorId:uuid,opportunityId:uuid.optional(),matchSummary:z.string().optional(),matchingSkills:z.array(z.string()).default([]),matchingInterests:z.array(z.string()).default([]),matchingExperience:z.array(z.string()).default([]),researchIdeas:z.array(z.string()).default([]),weaknesses:z.array(z.string()).default([]),matchConfidence:z.number().min(0).max(1).default(0),notes:z.string().optional()}).parse(request.body);return reply.status(201).send({data:repository.createProfessorCase(body as Parameters<AcademicRepository['createProfessorCase']>[0])});});
-  app.get('/api/academic/opportunities',async request=>{const{limit}=z.object({limit:z.coerce.number().int().min(1).max(500).default(100)}).parse(request.query);return{data:repository.listOpportunities(limit)};});
+  app.get('/api/academic/opportunities',async request=>{const query=z.object({limit:z.coerce.number().int().min(1).max(500).default(100),filters:z.string().optional()}).parse(request.query);return{data:query.filters?repository.filterOpportunities(academicSearchFiltersSchema.parse(JSON.parse(query.filters))).slice(0,query.limit):repository.listOpportunities(query.limit)};});
   app.get('/api/academic/opportunities/:id',async(request,reply)=>{const{id}=z.object({id:uuid}).parse(request.params);const data=repository.getOpportunity(id);return data?{data}:reply.status(404).send({error:'ACADEMIC_OPPORTUNITY_NOT_FOUND'});});
   app.post('/api/academic/opportunities',async(request,reply)=>reply.status(201).send({data:repository.createOpportunity(opportunityInputSchema.parse(request.body) as Parameters<AcademicRepository['createOpportunity']>[0])}));
   app.post('/api/academic/funding',async(request,reply)=>reply.status(201).send({data:repository.saveFunding(fundingInputSchema.parse(request.body) as Parameters<AcademicRepository['saveFunding']>[0])}));
@@ -44,4 +44,10 @@ export function registerAcademicRoutes(app:FastifyInstance,repository:AcademicRe
   app.post('/api/academic/outreach/:id/send',async(request,reply)=>{const{id}=z.object({id:uuid}).parse(request.params);return reply.status(202).send({data:repository.queueOutreach(id)});});
   app.post('/api/academic/outreach/batch-send',async(_request,reply)=>reply.status(202).send({data:repository.batchQueueApproved()}));
   app.patch('/api/academic/outreach/:id/followup',async request=>{const{id}=z.object({id:uuid}).parse(request.params);const{followupAt}=z.object({followupAt:z.string().datetime().nullable()}).parse(request.body);return{data:repository.markFollowup(id,followupAt)};});
+  app.get('/api/academic/search-preferences',async()=>({data:repository.getSearchPreferences()}));
+  app.get('/api/academic/searches',async request=>{const{limit}=z.object({limit:z.coerce.number().int().min(1).max(30).default(8)}).parse(request.query);return{data:repository.listAcademicSearches(limit)};});
+  app.post('/api/academic/searches',async(request,reply)=>reply.status(202).send({data:repository.createAcademicSearch(academicSearchFiltersSchema.parse(request.body))}));
+  app.get('/api/academic/shortlist',async()=>({data:repository.listShortlist()}));
+  app.post('/api/academic/shortlist',async(request,reply)=>{const body=z.object({entityType:z.enum(['OPPORTUNITY','UNIVERSITY','PROFESSOR']),entityId:uuid}).parse(request.body);return reply.status(201).send({data:repository.saveToShortlist(body.entityType,body.entityId)});});
+  app.delete('/api/academic/shortlist/:entityType/:entityId',async request=>{const{entityType,entityId}=z.object({entityType:z.enum(['OPPORTUNITY','UNIVERSITY','PROFESSOR']),entityId:uuid}).parse(request.params);return{data:repository.removeFromShortlist(entityType,entityId)};});
 }
