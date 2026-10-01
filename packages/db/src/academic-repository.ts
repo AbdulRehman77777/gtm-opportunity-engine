@@ -248,8 +248,17 @@ export class AcademicRepository {
     const count=this.db.select({count:sql<number>`count(*)`}).from(academicSearchResults).where(eq(academicSearchResults.searchId,input.searchId)).get()?.count??0;
     this.db.update(academicSearches).set({resultCount:Number(count),updatedAt:timestamp}).where(eq(academicSearches.id,input.searchId)).run();
   }
-  saveDiscoveryCandidate(input:{searchId:string;query:string;url:string;title:string;snippet:string;provider:string;model:string}) {
-    this.db.insert(academicDiscoveryCandidates).values({id:randomUUID(),...input,discoveredAt:now()}).onConflictDoNothing().run();
+  saveDiscoveryCandidate(input:{searchId:string;query:string;url:string;title:string;snippet:string;relevanceScore?:number|null;provider:string;model:string;providerMetadata?:Record<string,unknown>;discoveredAt?:string}) {
+    const {providerMetadata, ...values}=input;
+    this.db.insert(academicDiscoveryCandidates).values({id:randomUUID(),...values,providerMetadataJson:JSON.stringify(providerMetadata??{}),discoveredAt:input.discoveredAt??now()}).onConflictDoNothing().run();
+  }
+  getDiscoveryQueryCache<T>(key:string,cacheHours:number):T|null {
+    const row=this.db.select().from(settings).where(eq(settings.key,`academic.discovery.cache.${key}`)).get();
+    if(!row||Date.now()-new Date(row.updatedAt).getTime()>cacheHours*3_600_000)return null;
+    return parse<T>(row.valueJson);
+  }
+  saveDiscoveryQueryCache(key:string,value:unknown){
+    const timestamp=now();this.db.insert(settings).values({key:`academic.discovery.cache.${key}`,valueJson:JSON.stringify(value),updatedAt:timestamp}).onConflictDoUpdate({target:settings.key,set:{valueJson:JSON.stringify(value),updatedAt:timestamp}}).run();
   }
   recordSearchAnalysisCompleted(opportunityId:string) {
     const searches=this.db.select({id:academicSearches.id,progressJson:academicSearches.progressJson}).from(academicSearches).innerJoin(academicSearchResults,eq(academicSearchResults.searchId,academicSearches.id)).where(eq(academicSearchResults.opportunityId,opportunityId)).all();

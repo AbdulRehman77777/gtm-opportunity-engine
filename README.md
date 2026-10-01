@@ -4,7 +4,7 @@ Northstar now includes **Academic Intelligence**, a private evidence-backed rese
 
 The visible application is now academic-first and opens directly into Abdul's personal scholarship and research workspace. Its primary navigation covers search, opportunities, professors, universities, scholarships, shortlist, applications, outreach, deadlines, profile, and official sources. Legacy GTM/client/job modules remain isolated internally for backward compatibility and are not shown in the primary interface.
 
-Academic searches persist the selected countries, degree, funding requirement, research areas, keyword, result filter, and sort order. Submitting a search returns immediately, creates a durable `RUN_ACADEMIC_SEARCH` job, refreshes configured official sources, ranks existing canonical opportunities against the latest applicant profile, and queues bounded Groq analysis for the strongest cases.
+Academic searches persist the selected countries, degree, funding requirement, research areas, keyword, result filter, and sort order. Submitting a search returns immediately and creates a durable `RUN_ACADEMIC_SEARCH` job. Tavily discovers candidate URLs, Northstar independently retrieves and versions official pages, and only then Groq performs structured extraction and profile reasoning. Search snippets never become evidence or scholarship records. Ollama remains the reasoning fallback.
 
 A local-first opportunity intelligence system for U.S. AI, LLM, Python, full-stack, SaaS, and automation work. Northstar keeps client acquisition and job acquisition as separate funnels while preserving shared source evidence and complete history.
 
@@ -33,6 +33,8 @@ Open an opportunity in the dashboard to see its company intelligence view, evide
 ## AI configuration
 
 The default `AI_PROVIDER=auto` order is Groq (`openai/gpt-oss-120b`) → Ollama (`qwen2.5:7b`) → deterministic Northstar. Set `GROQ_API_KEY` only in `.env`; prompts and credentials are not logged by default. Groq availability, quotas, and pricing are controlled by Groq and must not be assumed to remain free.
+
+Academic URL discovery defaults to `ACADEMIC_SEARCH_PROVIDER=tavily`. Add `TAVILY_API_KEY` to `.env`; native `fetch` is used and Tavily answer generation is disabled. `groq` remains an explicit experimental discovery option and `none` disables live discovery. Tavily currently offers a free usage tier, but its limits and pricing can change. See [academic discovery](docs/academic-discovery.md).
 
 - Preferred: keep `AI_PROVIDER=auto`, configure `GROQ_API_KEY`, and optionally run Ollama as fallback.
 - Completely local: set `AI_PROVIDER=ollama`; Northstar never starts Ollama for you.

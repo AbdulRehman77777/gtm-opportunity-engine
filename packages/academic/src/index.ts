@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+export * from './discovery.js';
 
 export const fundingCategorySchema=z.enum(['CONFIRMED_FULL_FUNDING','TUITION_FREE_FUNDING_REQUIRED','PARTIAL_FUNDING','POTENTIAL_FUNDING_UNCONFIRMED','SELF_FUNDED','UNKNOWN']);
 export type FundingCategory=z.infer<typeof fundingCategorySchema>;

@@ -42,7 +42,7 @@ export async function buildApp(options: { connection?: DatabaseConnection; logge
   app.get('/health/db', async () => ({ status: connection.sqlite.prepare('SELECT 1 AS ok').get() ? 'ok' : 'error' }));
   app.get('/health/workers', async () => ({ status: 'ok', queue: connection.sqlite.prepare(`SELECT status, COUNT(*) count FROM worker_jobs GROUP BY status`).all() }));
   app.get('/health/ollama', async () => ollamaProvider.healthCheck());
-  app.get('/health/ai', async () => ({...(await getAIHealthReport(aiProvider)),discoveryEnabled:config.GROQ_BROWSER_SEARCH_ENABLED}));
+  app.get('/health/ai', async () => ({...(await getAIHealthReport(aiProvider)),discoveryEnabled:config.ACADEMIC_SEARCH_PROVIDER!=='none',discoveryProvider:config.ACADEMIC_SEARCH_PROVIDER}));
   app.get('/health/smtp', async () => config.SMTP_HOST ? smtpProvider.healthCheck() : {status:'misconfigured',detail:'SMTP_HOST is not configured'});
   app.get('/health/imap', async () => config.IMAP_HOST ? imapProvider.healthCheck() : {status:'misconfigured',detail:'IMAP_HOST is not configured'});
   app.get('/health/scheduler',async()=>finalRepository.schedulerHealth());

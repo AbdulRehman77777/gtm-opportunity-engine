@@ -46,7 +46,7 @@ export function registerAcademicRoutes(app:FastifyInstance,repository:AcademicRe
   app.patch('/api/academic/outreach/:id/followup',async request=>{const{id}=z.object({id:uuid}).parse(request.params);const{followupAt}=z.object({followupAt:z.string().datetime().nullable()}).parse(request.body);return{data:repository.markFollowup(id,followupAt)};});
   app.get('/api/academic/search-preferences',async()=>({data:repository.getSearchPreferences()}));
   app.get('/api/academic/searches',async request=>{const{limit}=z.object({limit:z.coerce.number().int().min(1).max(30).default(8)}).parse(request.query);return{data:repository.listAcademicSearches(limit)};});
-  app.get('/api/academic/discovery-status',async()=>({data:{enabled:config.GROQ_BROWSER_SEARCH_ENABLED}}));
+  app.get('/api/academic/discovery-status',async()=>({data:{enabled:config.ACADEMIC_SEARCH_PROVIDER!=='none',provider:config.ACADEMIC_SEARCH_PROVIDER}}));
   app.post('/api/academic/searches',async(request,reply)=>reply.status(202).send({data:repository.createAcademicSearch(academicSearchFiltersSchema.parse(request.body))}));
   app.get('/api/academic/shortlist',async()=>({data:repository.listShortlist()}));
   app.post('/api/academic/shortlist',async(request,reply)=>{const body=z.object({entityType:z.enum(['OPPORTUNITY','UNIVERSITY','PROFESSOR']),entityId:uuid}).parse(request.body);return reply.status(201).send({data:repository.saveToShortlist(body.entityType,body.entityId)});});

@@ -416,7 +416,7 @@ export const academicSearchResults = sqliteTable('academic_search_results', {
 }, table=>[uniqueIndex('idx_academic_search_results_search_opportunity').on(table.searchId,table.opportunityId),index('idx_academic_search_results_search_time').on(table.searchId,table.discoveredAt)]);
 
 export const academicDiscoveryCandidates = sqliteTable('academic_discovery_candidates', {
-  id:text('id').primaryKey(), searchId:text('search_id').notNull().references(()=>academicSearches.id), query:text('query').notNull(), url:text('url').notNull(), title:text('title').notNull(), snippet:text('snippet').notNull().default(''), provider:text('provider').notNull(), model:text('model').notNull(), discoveredAt:text('discovered_at').notNull()
+  id:text('id').primaryKey(), searchId:text('search_id').notNull().references(()=>academicSearches.id), query:text('query').notNull(), url:text('url').notNull(), title:text('title').notNull(), snippet:text('snippet').notNull().default(''), relevanceScore:real('relevance_score'), provider:text('provider').notNull(), model:text('model').notNull(), providerMetadataJson:text('provider_metadata_json').notNull().default('{}'), discoveredAt:text('discovered_at').notNull()
 }, table=>[uniqueIndex('idx_academic_discovery_candidates_search_url').on(table.searchId,table.url),index('idx_academic_discovery_candidates_search_time').on(table.searchId,table.discoveredAt)]);
 
 export const academicShortlist = sqliteTable('academic_shortlist', {

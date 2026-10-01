@@ -60,7 +60,14 @@ import { OperationsRepository } from "@gtm/db";
 import {
   academicEmailDraftSchema,
   academicOpportunityAnalysisSchema,
+  discoveryCacheKey,
+  generateAcademicDiscoveryQueries,
+  isLikelyOfficialAcademicUrl,
+  normalizeAcademicUrl,
   professorAnalysisSchema,
+  TavilyDiscoveryError,
+  TavilyDiscoveryProvider,
+  type DiscoveryCandidate,
 } from "@gtm/academic";
 import { contentHash } from "@gtm/shared";
 import { z, type ZodType } from "zod";
@@ -402,53 +409,55 @@ export class Worker {
   }
   private async runAcademicDiscovery(searchId: string) {
     const search = this.academicRepository.beginAcademicSearch(searchId);
-    if (!this.config.GROQ_BROWSER_SEARCH_ENABLED || !this.config.GROQ_API_KEY) {
+    if (this.config.ACADEMIC_SEARCH_PROVIDER === 'none') {
       const deterministic = this.academicRepository.runAcademicSearch(searchId);
       this.academicRepository.updateAcademicSearch(searchId,{status:'DISCOVERY_DISABLED',progress:{discoveryQueries:0,candidateUrls:0,pagesRetrieved:0,officialPagesVerified:0,opportunitiesCreated:deterministic.resultCount,fundingVerified:0,aiAnalysesCompleted:0,failures:0}});
       return { ...deterministic,status:'DISCOVERY_DISABLED', discovery: "disabled" };
     }
-    if (
-      this.academicRepository.aiRequestsToday() >=
-      this.config.AI_MAX_DAILY_REQUESTS
-    ) {
-      const deterministic = this.academicRepository.runAcademicSearch(searchId);
-      this.academicRepository.updateAcademicSearch(searchId,{status:'PARTIAL',errorCategory:'RATE_LIMITED'});
-      return { ...deterministic,status:'PARTIAL', discovery: "daily-limit" };
-    }
     const profile = this.academicRepository.ensureDefaultProfile();
-    const groq = new GroqProvider(
-      this.config.GROQ_BASE_URL,
-      this.config.GROQ_MODEL,
-      this.config.GROQ_API_KEY,
-      this.config.GROQ_BROWSER_SEARCH_TIMEOUT_MS,
-    );
-    const maximum = Math.min(12, this.config.AI_MAX_RESEARCH_ITEMS_PER_RUN);
-    let discoveryProvider = "deterministic";
-    let discoveryModel = "official-source-catalog";
-    const query=`Official current ${search.filters.degree} opportunities in ${search.filters.countries.join(', ')}. Funding intent: ${search.filters.funding}. Research areas: ${search.filters.researchAreas.join(', ')}. Return official university, government, or research institute URLs.`;
-    let candidates:Array<{url:string;title:string;snippet:string;officialUrl:string;universityName:string;country:string;programTitle:string;degreeLevel:'PHD'|'MASTERS'|'MS_PHD'|'RESEARCH'|'FELLOWSHIP';origin:'GROQ_DISCOVERY'|'CURATED_FALLBACK'}>=fallbackAcademicCandidates(search.filters.countries).map(item=>({...item,url:item.officialUrl,title:item.programTitle,snippet:'Curated official fallback',origin:'CURATED_FALLBACK'}));
+    const maximum = Math.min(this.config.ACADEMIC_DISCOVERY_MAX_OFFICIAL_PAGES,this.config.AI_MAX_RESEARCH_ITEMS_PER_RUN);
+    let discoveryProvider:string=this.config.ACADEMIC_SEARCH_PROVIDER;
+    let discoveryModel=this.config.ACADEMIC_SEARCH_PROVIDER==='tavily'?'search-results':'official-source-catalog';
+    const queries=generateAcademicDiscoveryQueries(search.filters,this.config.ACADEMIC_DISCOVERY_QUERIES_PER_SEARCH);
+    let candidates:DiscoveryCandidate[]=[];
     let discoveryErrorCategory:string|null=null;
-    let diagnostics:BrowserDiscoveryDiagnostic[]=[];
-    const progress={discoveryQueries:1,candidateUrls:0,pagesRetrieved:0,officialPagesVerified:0,opportunitiesCreated:0,fundingVerified:0,aiAnalysesCompleted:0,failures:0};
+    let diagnostics:Array<BrowserDiscoveryDiagnostic|Record<string,unknown>>=[];
+    const progress={discoveryQueries:0,candidateUrls:0,pagesRetrieved:0,officialPagesVerified:0,opportunitiesCreated:0,fundingVerified:0,aiAnalysesCompleted:0,failures:0};
     try {
-      const discovered = await browserDiscoverWithRetry(groq,{query,maxResults:Math.min(10,maximum)},{onAttempt:diagnostic=>{diagnostics=[...diagnostics,diagnostic];progress.discoveryQueries=diagnostics.length;this.academicRepository.updateAcademicSearch(searchId,{progress,diagnostics});}});
-      diagnostics=discovered.diagnostics;
-      candidates = discovered.results.map(item=>({...item,officialUrl:item.url,universityName:'Pending extraction',country:search.filters.countries[0]??'Unknown',programTitle:item.title,degreeLevel:(search.filters.degree==='PHD'?'PHD':'RESEARCH') as 'PHD'|'RESEARCH',origin:'GROQ_DISCOVERY'}));
-      discoveryProvider = discovered.provider;
-      discoveryModel = discovered.model;
+      if(this.config.ACADEMIC_SEARCH_PROVIDER==='tavily'){
+        const tavily=new TavilyDiscoveryProvider({...(this.config.TAVILY_API_KEY?{apiKey:this.config.TAVILY_API_KEY}:{}),baseUrl:this.config.TAVILY_BASE_URL,searchDepth:this.config.TAVILY_SEARCH_DEPTH,timeoutMs:this.config.TAVILY_REQUEST_TIMEOUT_MS});
+        for(const query of queries){
+          const started=Date.now(),cacheKey=discoveryCacheKey(query,this.config.ACADEMIC_DISCOVERY_RESULTS_PER_QUERY,this.config.TAVILY_SEARCH_DEPTH);
+          const cached=this.academicRepository.getDiscoveryQueryCache<DiscoveryCandidate[]>(cacheKey,this.config.ACADEMIC_DISCOVERY_CACHE_HOURS);
+          const results=cached??await tavily.search(query,Math.min(this.config.TAVILY_MAX_RESULTS,this.config.ACADEMIC_DISCOVERY_RESULTS_PER_QUERY));
+          if(!cached)this.academicRepository.saveDiscoveryQueryCache(cacheKey,results);
+          candidates.push(...results);progress.discoveryQueries++;
+          diagnostics.push({provider:'tavily',attempt:1,durationMs:Date.now()-started,resultCount:results.length,cacheHit:Boolean(cached),fallbackUsed:false});
+          this.academicRepository.updateAcademicSearch(searchId,{progress,diagnostics});
+        }
+      }else{
+        if(!this.config.GROQ_BROWSER_SEARCH_ENABLED||!this.config.GROQ_API_KEY)throw new AIProviderError('Groq browser discovery is not configured','MISCONFIGURED','groq');
+        const query=queries.join(' OR '),groq=new GroqProvider(this.config.GROQ_BASE_URL,this.config.GROQ_MODEL,this.config.GROQ_API_KEY,this.config.GROQ_BROWSER_SEARCH_TIMEOUT_MS);
+        const discovered=await browserDiscoverWithRetry(groq,{query,maxResults:this.config.ACADEMIC_DISCOVERY_MAX_CANDIDATES},{onAttempt:diagnostic=>{diagnostics=[...diagnostics,diagnostic];progress.discoveryQueries=diagnostics.length;this.academicRepository.updateAcademicSearch(searchId,{progress,diagnostics});}});
+        diagnostics=discovered.diagnostics;discoveryProvider=discovered.provider;discoveryModel=discovered.model;
+        candidates=discovered.results.map(item=>({url:normalizeAcademicUrl(item.url),title:item.title,snippet:item.snippet,score:null,provider:'GROQ_DISCOVERY',providerMetadata:{model:discovered.model},discoveredAt:new Date().toISOString(),query}));
+      }
+      const deduplicated=new Map<string,DiscoveryCandidate>();for(const candidate of candidates){const url=normalizeAcademicUrl(candidate.url),previous=deduplicated.get(url);if(!previous||(candidate.score??0)>(previous.score??0))deduplicated.set(url,{...candidate,url});}
+      candidates=[...deduplicated.values()].sort((a,b)=>(b.score??0)-(a.score??0)).slice(0,this.config.ACADEMIC_DISCOVERY_MAX_CANDIDATES);
       progress.candidateUrls=candidates.length;
       this.academicRepository.updateAcademicSearch(searchId,{status:'VERIFYING',progress,diagnostics,provider:discoveryProvider,model:discoveryModel,errorCategory:null});
     } catch (error) {
-      discoveryErrorCategory=error instanceof AIProviderError?(error.code==='MISCONFIGURED'?'AUTH':error.code):'UPSTREAM';
+      discoveryErrorCategory=error instanceof TavilyDiscoveryError?error.category:error instanceof AIProviderError?(error.code==='MISCONFIGURED'?'AUTH':error.code):'UPSTREAM';
       const recorded=(error as AIProviderError&{diagnostics?:BrowserDiscoveryDiagnostic[]}).diagnostics;if(recorded)diagnostics=recorded;
       progress.discoveryQueries=diagnostics.length;
       if(diagnostics.length)diagnostics=diagnostics.map((item,index)=>index===diagnostics.length-1?{...item,fallbackUsed:true}:item);
       progress.failures++;
+      candidates=fallbackAcademicCandidates(search.filters.countries).map(item=>({url:normalizeAcademicUrl(item.officialUrl),title:item.programTitle,snippet:'Curated official fallback',score:null,provider:'CURATED_FALLBACK',providerMetadata:{catalog:'northstar'},discoveredAt:new Date().toISOString(),query:'curated official sources'}));
       progress.candidateUrls=candidates.length;
       this.academicRepository.updateAcademicSearch(searchId,{status:'VERIFYING',progress,diagnostics,provider:'fallback',model:'official-source-catalog',errorCategory:discoveryErrorCategory});
       this.log.warn(
-        { provider: "groq", reason: error instanceof Error ? error.message : "failed" },
-        "Groq discovery unavailable; using curated official sources",
+        { provider: this.config.ACADEMIC_SEARCH_PROVIDER, category:discoveryErrorCategory },
+        "Live discovery unavailable; using curated official sources",
       );
     }
     const crawler = new CompanyCrawler({
@@ -460,31 +469,31 @@ export class Worker {
       globalConcurrency: 1,
       userAgent: "NorthstarAcademicResearch/0.1 (+public-evidence-only)",
     });
-    for(const candidate of candidates)this.academicRepository.saveDiscoveryCandidate({searchId,query,url:candidate.officialUrl,title:candidate.title,snippet:candidate.snippet,provider:candidate.origin,model:discoveryModel});
+    for(const candidate of candidates)this.academicRepository.saveDiscoveryCandidate({searchId,query:candidate.query,url:candidate.url,title:candidate.title,snippet:candidate.snippet,relevanceScore:candidate.score,provider:candidate.provider,model:discoveryModel,providerMetadata:candidate.providerMetadata,discoveredAt:candidate.discoveredAt});
     let verified = 0;
     for (const candidate of candidates.slice(0, maximum)) {
-      if (!isAcceptableAcademicSource(candidate.officialUrl)) continue;
-      const fetched = await crawler.crawlUrl(candidate.officialUrl);
-      if (!fetched.page || !fetched.contentHash) continue;
+      if (!isAcceptableAcademicSource(candidate.url)||!isLikelyOfficialAcademicUrl(candidate.url,search.filters.countries)) continue;
+      let fetched;try{fetched=await crawler.crawlUrl(candidate.url);}catch{progress.failures++;continue;}
+      if (!fetched.page || !fetched.contentHash){progress.failures++;continue;}
       progress.pagesRetrieved++;
       const pageText = fetched.page.textContent.slice(0, 100_000);
       if (pageText.trim().length < 300) continue;
       progress.officialPagesVerified++;
       let extracted:z.infer<typeof academicPageExtractionSchema>;
       try{
-        const generated=await this.aiProvider.generateStructured({system:'Extract only facts supported by the independently retrieved official page. Use UNKNOWN when funding is not proven.',prompt:JSON.stringify({url:candidate.officialUrl,title:fetched.page.title,text:pageText.slice(0,50000),searchIntent:search.filters,applicantInterests:[...(profile.primaryInterests as string[]),...(profile.secondaryInterests as string[])]}),schema:academicPageExtractionSchema,schemaName:'academic_page_extraction'});
+        const generated=await this.aiProvider.generateStructured({system:'Extract only facts supported by the independently retrieved official page. A search snippet is never evidence. Use UNKNOWN unless this page proves the claim; CONFIRMED_FULL_FUNDING requires official support for both tuition and living funding.',prompt:JSON.stringify({url:candidate.url,title:fetched.page.title,text:pageText.slice(0,50000),searchIntent:search.filters,applicantInterests:[...(profile.primaryInterests as string[]),...(profile.secondaryInterests as string[])]}),schema:academicPageExtractionSchema,schemaName:'academic_page_extraction'});
         extracted=generated.data;
       }catch{
-        extracted={universityName:candidate.universityName,country:candidate.country,programTitle:candidate.programTitle,degreeLevel:candidate.degreeLevel,fundingCategory:classifyFundingFromPage(pageText),deadline:null,requirements:[],researchAreas:search.filters.researchAreas,professors:[]};
+        extracted={universityName:new URL(candidate.url).hostname,country:search.filters.countries[0]??'Unknown',programTitle:candidate.title,degreeLevel:search.filters.degree==='PHD'?'PHD':'RESEARCH',fundingCategory:classifyFundingFromPage(pageText),deadline:null,requirements:[],researchAreas:search.filters.researchAreas,professors:[]};
         progress.failures++;
       }
       const source = this.academicRepository.saveSource({
-        kind: candidate.origin,
-        name: new URL(candidate.officialUrl).hostname,
-        url: candidate.officialUrl,
+        kind: candidate.provider,
+        name: new URL(candidate.url).hostname,
+        url: candidate.url,
         canonicalUrl: fetched.page.canonicalUrl,
         official: true,
-        metadata: { searchId, discoveredBy: candidate.origin==='GROQ_DISCOVERY'?"groq-browser-search":"curated-fallback" },
+        metadata: { searchId, discoveredBy: candidate.provider },
       });
       const run = this.academicRepository.beginAcademicResearch(source.id);
       this.academicRepository.finishAcademicResearch(run.id, source.id, [
@@ -499,14 +508,14 @@ export class Worker {
       const university = this.academicRepository.upsertUniversity({
         name: extracted.universityName,
         country: extracted.country,
-        officialUrl: `${new URL(candidate.officialUrl).protocol}//${new URL(candidate.officialUrl).host}`,
+        officialUrl: `${new URL(candidate.url).protocol}//${new URL(candidate.url).host}`,
         confidence: 0.75,
       });
       const program = this.academicRepository.upsertProgram({
         universityId: university.id,
         name: extracted.programTitle,
         degreeLevel: extracted.degreeLevel,
-        websiteUrl: candidate.officialUrl,
+        websiteUrl: candidate.url,
         requirements: { discoveryStatus: "REVIEW_REQUIRED",requirements:extracted.requirements,researchAreas:extracted.researchAreas },
       });
       const fundingCategory = extracted.fundingCategory;
@@ -518,12 +527,12 @@ export class Worker {
         country: extracted.country,
         ...(extracted.deadline?{deadline:extracted.deadline}:{}),
         fundingCategory,
-        sourceUrl: candidate.officialUrl,
+        sourceUrl: candidate.url,
         notes:
           "Discovered from an official public page; detailed eligibility and funding require evidence review.",
       });
       const opportunityId = String((opportunity as unknown as { id: string }).id);
-      this.academicRepository.associateSearchResult({searchId,opportunityId,discoveryQuery:query,candidateUrl:candidate.officialUrl,status:'VERIFIED',relevanceScore:0.75});
+      this.academicRepository.associateSearchResult({searchId,opportunityId,discoveryQuery:candidate.query,candidateUrl:candidate.url,status:'VERIFIED',relevanceScore:candidate.score??0.75});
       progress.opportunitiesCreated++;
       if(fundingCategory==='CONFIRMED_FULL_FUNDING')progress.fundingVerified++;
       this.academicRepository.updateAcademicSearch(searchId,{status:'ANALYZING',progress});
@@ -534,10 +543,15 @@ export class Worker {
         claimType: "OFFICIAL_PROGRAM_PAGE",
         claim: `Official page for ${extracted.programTitle}`,
         excerpt: relevantExcerpt(pageText, extracted.programTitle),
-        sourceUrl: candidate.officialUrl,
+        sourceUrl: candidate.url,
         classification: "FACT",
         confidence: 0.8,
       });
+      for(const item of extracted.professors.slice(0,3)){
+        const professor=this.academicRepository.upsertProfessor({universityId:university.id,fullName:item.name,researchAreas:item.researchAreas,summary:`Named on the verified official program page: ${candidate.url}`});
+        const professorCase=this.academicRepository.createProfessorCase({professorId:professor.id,opportunityId,matchingInterests:item.researchAreas,matchConfidence:0.5,notes:'Discovered from the verified program page; detailed research matching is queued.'});
+        if(professorCase)this.academicRepository.queueAcademicAi('ANALYZE_PROFESSOR_AI',professorCase.id);
+      }
       this.academicRepository.queueAcademicAi(
         "ANALYZE_ACADEMIC_OPPORTUNITY_AI",
         opportunityId,
