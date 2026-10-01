@@ -6,6 +6,7 @@ import {
   companyAnalysisSchema,
   createAIProvider,
   GroqProvider,
+  AIProviderError,
   type AIProvider,
 } from "@gtm/ai";
 import {
@@ -62,27 +63,7 @@ import {
 import { contentHash } from "@gtm/shared";
 import { z, type ZodType } from "zod";
 
-const academicDiscoverySchema = z
-  .object({
-    opportunities: z
-      .array(
-        z.object({
-          universityName: z.string().min(2),
-          country: z.string().min(2),
-          programTitle: z.string().min(3),
-          degreeLevel: z.enum([
-            "PHD",
-            "MASTERS",
-            "MS_PHD",
-            "RESEARCH",
-            "FELLOWSHIP",
-          ]),
-          officialUrl: z.string().url(),
-        }),
-      )
-      .max(12),
-  })
-  .strict();
+const academicPageExtractionSchema=z.object({universityName:z.string().min(2),country:z.string().min(2),programTitle:z.string().min(3),degreeLevel:z.enum(['PHD','MASTERS','MS_PHD','RESEARCH','FELLOWSHIP']),fundingCategory:z.enum(['CONFIRMED_FULL_FUNDING','TUITION_FREE_FUNDING_REQUIRED','PARTIAL_FUNDING','POTENTIAL_FUNDING_UNCONFIRMED','SELF_FUNDED','UNKNOWN']),deadline:z.string().datetime().nullable(),requirements:z.array(z.string()).default([]),researchAreas:z.array(z.string()).default([]),professors:z.array(z.object({name:z.string(),researchAreas:z.array(z.string()).default([])})).default([])}).strict();
 
 export class Worker {
   private readonly connection: DatabaseConnection;
@@ -421,14 +402,16 @@ export class Worker {
     const search = this.academicRepository.beginAcademicSearch(searchId);
     if (!this.config.GROQ_BROWSER_SEARCH_ENABLED || !this.config.GROQ_API_KEY) {
       const deterministic = this.academicRepository.runAcademicSearch(searchId);
-      return { ...deterministic, discovery: "disabled" };
+      this.academicRepository.updateAcademicSearch(searchId,{status:'DISCOVERY_DISABLED',progress:{discoveryQueries:0,candidateUrls:0,pagesRetrieved:0,officialPagesVerified:0,opportunitiesCreated:deterministic.resultCount,fundingVerified:0,aiAnalysesCompleted:0,failures:0}});
+      return { ...deterministic,status:'DISCOVERY_DISABLED', discovery: "disabled" };
     }
     if (
       this.academicRepository.aiRequestsToday() >=
       this.config.AI_MAX_DAILY_REQUESTS
     ) {
       const deterministic = this.academicRepository.runAcademicSearch(searchId);
-      return { ...deterministic, discovery: "daily-limit" };
+      this.academicRepository.updateAcademicSearch(searchId,{status:'PARTIAL',errorCategory:'RATE_LIMITED'});
+      return { ...deterministic,status:'PARTIAL', discovery: "daily-limit" };
     }
     const profile = this.academicRepository.ensureDefaultProfile();
     const groq = new GroqProvider(
@@ -440,25 +423,22 @@ export class Worker {
     const maximum = Math.min(12, this.config.AI_MAX_RESEARCH_ITEMS_PER_RUN);
     let discoveryProvider = "deterministic";
     let discoveryModel = "official-source-catalog";
-    let candidates:z.infer<typeof academicDiscoverySchema>["opportunities"] = fallbackAcademicCandidates(search.filters.countries);
+    const query=`Official current ${search.filters.degree} opportunities in ${search.filters.countries.join(', ')}. Funding intent: ${search.filters.funding}. Research areas: ${search.filters.researchAreas.join(', ')}. Return official university, government, or research institute URLs.`;
+    let candidates:Array<{url:string;title:string;snippet:string;officialUrl:string;universityName:string;country:string;programTitle:string;degreeLevel:'PHD'|'MASTERS'|'MS_PHD'|'RESEARCH'|'FELLOWSHIP'}>=fallbackAcademicCandidates(search.filters.countries).map(item=>({...item,url:item.officialUrl,title:item.programTitle,snippet:'Curated official fallback'}));
+    let discoveryErrorCategory:string|null=null;
+    const progress={discoveryQueries:1,candidateUrls:0,pagesRetrieved:0,officialPagesVerified:0,opportunitiesCreated:0,fundingVerified:0,aiAnalysesCompleted:0,failures:0};
     try {
-      const discovered = await groq.browserSearchStructured({
-        schema: academicDiscoverySchema,
-        prompt: JSON.stringify({
-          task: `Find up to ${maximum} current graduate or research opportunities matching this request. Search official university, government scholarship, DAAD, EURAXESS, Erasmus Mundus, or official research-institute pages only. Return {"opportunities":[{"universityName":"...","country":"...","programTitle":"...","degreeLevel":"PHD|MASTERS|MS_PHD|RESEARCH|FELLOWSHIP","officialUrl":"https://..."}]}. Do not use blogs, aggregators, social media, or search-result URLs.`,
-          filters: search.filters,
-          applicant: {
-            nationality: profile.nationality,
-            education: profile.education,
-            primaryInterests: profile.primaryInterests,
-            secondaryInterests: profile.secondaryInterests,
-          },
-        }),
-      });
-      candidates = discovered.data.opportunities;
+      const discovered = await groq.browserDiscover({query,maxResults:Math.min(10,maximum)});
+      candidates = discovered.results.map(item=>({...item,officialUrl:item.url,universityName:'Pending extraction',country:search.filters.countries[0]??'Unknown',programTitle:item.title,degreeLevel:(search.filters.degree==='PHD'?'PHD':'RESEARCH') as 'PHD'|'RESEARCH'}));
       discoveryProvider = discovered.provider;
       discoveryModel = discovered.model;
+      progress.candidateUrls=candidates.length;
+      this.academicRepository.updateAcademicSearch(searchId,{status:'VERIFYING',progress,provider:discoveryProvider,model:discoveryModel,errorCategory:null});
     } catch (error) {
+      discoveryErrorCategory=error instanceof AIProviderError?(error.code==='MISCONFIGURED'?'AUTH':error.code):'UPSTREAM';
+      progress.failures++;
+      progress.candidateUrls=candidates.length;
+      this.academicRepository.updateAcademicSearch(searchId,{status:'VERIFYING',progress,provider:'fallback',model:'official-source-catalog',errorCategory:discoveryErrorCategory});
       this.log.warn(
         { provider: "groq", reason: error instanceof Error ? error.message : "failed" },
         "Groq discovery unavailable; using curated official sources",
@@ -473,13 +453,24 @@ export class Worker {
       globalConcurrency: 1,
       userAgent: "NorthstarAcademicResearch/0.1 (+public-evidence-only)",
     });
+    for(const candidate of candidates)this.academicRepository.saveDiscoveryCandidate({searchId,query,url:candidate.officialUrl,title:candidate.title,snippet:candidate.snippet,provider:discoveryProvider,model:discoveryModel});
     let verified = 0;
     for (const candidate of candidates.slice(0, maximum)) {
       if (!isAcceptableAcademicSource(candidate.officialUrl)) continue;
       const fetched = await crawler.crawlUrl(candidate.officialUrl);
       if (!fetched.page || !fetched.contentHash) continue;
+      progress.pagesRetrieved++;
       const pageText = fetched.page.textContent.slice(0, 100_000);
       if (pageText.trim().length < 300) continue;
+      progress.officialPagesVerified++;
+      let extracted:z.infer<typeof academicPageExtractionSchema>;
+      try{
+        const generated=await this.aiProvider.generateStructured({system:'Extract only facts supported by the independently retrieved official page. Use UNKNOWN when funding is not proven.',prompt:JSON.stringify({url:candidate.officialUrl,title:fetched.page.title,text:pageText.slice(0,50000),searchIntent:search.filters,applicantInterests:[...(profile.primaryInterests as string[]),...(profile.secondaryInterests as string[])]}),schema:academicPageExtractionSchema,schemaName:'academic_page_extraction'});
+        extracted=generated.data;
+      }catch{
+        extracted={universityName:candidate.universityName,country:candidate.country,programTitle:candidate.programTitle,degreeLevel:candidate.degreeLevel,fundingCategory:classifyFundingFromPage(pageText),deadline:null,requirements:[],researchAreas:search.filters.researchAreas,professors:[]};
+        progress.failures++;
+      }
       const source = this.academicRepository.saveSource({
         kind: "GROQ_DISCOVERY",
         name: new URL(candidate.officialUrl).hostname,
@@ -499,38 +490,43 @@ export class Worker {
         },
       ]);
       const university = this.academicRepository.upsertUniversity({
-        name: candidate.universityName,
-        country: candidate.country,
+        name: extracted.universityName,
+        country: extracted.country,
         officialUrl: `${new URL(candidate.officialUrl).protocol}//${new URL(candidate.officialUrl).host}`,
         confidence: 0.75,
       });
       const program = this.academicRepository.upsertProgram({
         universityId: university.id,
-        name: candidate.programTitle,
-        degreeLevel: candidate.degreeLevel,
+        name: extracted.programTitle,
+        degreeLevel: extracted.degreeLevel,
         websiteUrl: candidate.officialUrl,
-        requirements: { discoveryStatus: "REVIEW_REQUIRED" },
+        requirements: { discoveryStatus: "REVIEW_REQUIRED",requirements:extracted.requirements,researchAreas:extracted.researchAreas },
       });
-      const fundingCategory = classifyFundingFromPage(pageText);
+      const fundingCategory = extracted.fundingCategory;
       const opportunity = this.academicRepository.createOpportunity({
         universityId: university.id,
         programId: program.id,
-        title: candidate.programTitle,
-        degreeLevel: candidate.degreeLevel,
-        country: candidate.country,
+        title: extracted.programTitle,
+        degreeLevel: extracted.degreeLevel,
+        country: extracted.country,
+        ...(extracted.deadline?{deadline:extracted.deadline}:{}),
         fundingCategory,
         sourceUrl: candidate.officialUrl,
         notes:
           "Discovered from an official public page; detailed eligibility and funding require evidence review.",
       });
-      const opportunityId = String((opportunity as { id: string }).id);
+      const opportunityId = String((opportunity as unknown as { id: string }).id);
+      this.academicRepository.associateSearchResult({searchId,opportunityId,discoveryQuery:query,candidateUrl:candidate.officialUrl,status:'VERIFIED',relevanceScore:0.75});
+      progress.opportunitiesCreated++;
+      if(fundingCategory==='CONFIRMED_FULL_FUNDING')progress.fundingVerified++;
+      this.academicRepository.updateAcademicSearch(searchId,{status:'ANALYZING',progress});
       this.academicRepository.saveEvidence({
         sourceId: source.id,
         entityType: "OPPORTUNITY",
         entityId: opportunityId,
         claimType: "OFFICIAL_PROGRAM_PAGE",
-        claim: `Official page for ${candidate.programTitle}`,
-        excerpt: relevantExcerpt(pageText, candidate.programTitle),
+        claim: `Official page for ${extracted.programTitle}`,
+        excerpt: relevantExcerpt(pageText, extracted.programTitle),
         sourceUrl: candidate.officialUrl,
         classification: "FACT",
         confidence: 0.8,
@@ -541,11 +537,12 @@ export class Worker {
       );
       verified++;
     }
-    const results = this.academicRepository.filterOpportunities(search.filters);
-    this.academicRepository.completeAcademicSearch(searchId, results.length);
+    const results = this.academicRepository.listSearchOpportunities(searchId,search.filters);
+    this.academicRepository.updateAcademicSearch(searchId,{progress});
+    this.academicRepository.completeAcademicSearch(searchId, results.length,discoveryErrorCategory?'PARTIAL':'COMPLETED');
     return {
       searchId,
-      status: "COMPLETED",
+      status: discoveryErrorCategory?'PARTIAL':"COMPLETED",
       candidates: candidates.length,
       verified,
       results: results.length,
@@ -1207,7 +1204,7 @@ export class Worker {
       force,
       system:
         "Analyze a graduate or research opportunity using only supplied applicant data and evidence. Every factual university, program, eligibility, funding, or professor statement must cite evidenceIds. Use UNKNOWN for missing facts and HYPOTHESIS for proposed research ideas. Never claim admission probability.",
-      onComplete: () => undefined,
+      onComplete: () => this.academicRepository.recordSearchAnalysisCompleted(opportunityId),
     });
   }
   private async analyzeProfessor(professorCaseId: string, force: boolean) {

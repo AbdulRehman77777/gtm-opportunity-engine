@@ -20,12 +20,14 @@ import type { DatabaseConnection } from "./client.js";
 import {
   academicApplicantProfiles,
   academicDocuments,
+  academicDiscoveryCandidates,
   academicEvidence,
   academicOpportunities,
   academicOutreach,
   academicPageVersions,
   academicPrograms,
   academicResearchRuns,
+  academicSearchResults,
   academicScoreSnapshots,
   academicSearches,
   academicShortlist,
@@ -44,6 +46,16 @@ import {
 
 const now = () => new Date().toISOString();
 const parse = <T>(value: string): T => JSON.parse(value) as T;
+const normalizeResearchText=(value:string)=>value.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+const researchFamilies:Record<string,string[]>={
+  'llms':['llm','large language model','language model','generative ai'],
+  'ai memory':['ai memory','episodic memory','long term memory','retrieval memory'],
+  'ai agents':['ai agent','agents','agentic ai','autonomous agent','multi agent'],
+  'nlp':['natural language processing','nlp','computational linguistics'],
+  'robotics':['robotics','robot learning','autonomous systems'],
+  'artificial intelligence':['artificial intelligence',' ai ','machine learning','deep learning'],
+};
+const researchTerms=(area:string)=>{const normalized=normalizeResearchText(area);return (researchFamilies[normalized]??[normalized]).map(normalizeResearchText)};
 
 export class AcademicRepository {
   constructor(private readonly connection: DatabaseConnection) {}
@@ -193,7 +205,9 @@ export class AcademicRepository {
       ? {
           ...row,
           filters: parse<AcademicSearchFilters>(row.filtersJson),
+          progress: parse<Record<string,number>>(row.progressJson),
           filtersJson: undefined,
+          progressJson: undefined,
         }
       : null;
   }
@@ -207,8 +221,39 @@ export class AcademicRepository {
       .map((row) => ({
         ...row,
         filters: parse<AcademicSearchFilters>(row.filtersJson),
+        progress: parse<Record<string,number>>(row.progressJson),
         filtersJson: undefined,
+        progressJson: undefined,
       }));
+  }
+  updateAcademicSearch(searchId:string,input:{status?:string;progress?:Record<string,number>;provider?:string;model?:string;errorCategory?:string|null}) {
+    this.db.update(academicSearches).set({
+      ...(input.status?{status:input.status}:{}),
+      ...(input.progress?{progressJson:JSON.stringify(input.progress)}:{}),
+      ...(input.provider?{discoveryProvider:input.provider}:{}),
+      ...(input.model?{discoveryModel:input.model}:{}),
+      ...(input.errorCategory!==undefined?{discoveryErrorCategory:input.errorCategory}:{}),
+      updatedAt:now(),
+    }).where(eq(academicSearches.id,searchId)).run();
+    return this.getAcademicSearch(searchId);
+  }
+  associateSearchResult(input:{searchId:string;opportunityId:string;discoveryQuery?:string;candidateUrl?:string;status?:string;relevanceScore?:number}) {
+    const timestamp=now();
+    this.db.insert(academicSearchResults).values({id:randomUUID(),searchId:input.searchId,opportunityId:input.opportunityId,discoveredAt:timestamp,discoveryQuery:input.discoveryQuery,candidateUrl:input.candidateUrl,status:input.status??'VERIFIED',relevanceScore:input.relevanceScore??0,createdAt:timestamp,updatedAt:timestamp}).onConflictDoUpdate({target:[academicSearchResults.searchId,academicSearchResults.opportunityId],set:{candidateUrl:input.candidateUrl,status:input.status??'VERIFIED',relevanceScore:input.relevanceScore??0,updatedAt:timestamp}}).run();
+    const count=this.db.select({count:sql<number>`count(*)`}).from(academicSearchResults).where(eq(academicSearchResults.searchId,input.searchId)).get()?.count??0;
+    this.db.update(academicSearches).set({resultCount:Number(count),updatedAt:timestamp}).where(eq(academicSearches.id,input.searchId)).run();
+  }
+  saveDiscoveryCandidate(input:{searchId:string;query:string;url:string;title:string;snippet:string;provider:string;model:string}) {
+    this.db.insert(academicDiscoveryCandidates).values({id:randomUUID(),...input,discoveredAt:now()}).onConflictDoNothing().run();
+  }
+  recordSearchAnalysisCompleted(opportunityId:string) {
+    const searches=this.db.select({id:academicSearches.id,progressJson:academicSearches.progressJson}).from(academicSearches).innerJoin(academicSearchResults,eq(academicSearchResults.searchId,academicSearches.id)).where(eq(academicSearchResults.opportunityId,opportunityId)).all();
+    for(const search of searches){const progress=parse<Record<string,number>>(search.progressJson);progress.aiAnalysesCompleted=(progress.aiAnalysesCompleted??0)+1;this.updateAcademicSearch(search.id,{progress});}
+  }
+  listSearchOpportunities(searchId:string,filters:AcademicSearchFilters) {
+    const ids=this.db.select({id:academicSearchResults.opportunityId}).from(academicSearchResults).where(eq(academicSearchResults.searchId,searchId)).orderBy(desc(academicSearchResults.discoveredAt)).all().map(row=>row.id);
+    const allowed=new Set(ids);
+    return this.filterOpportunities(filters).filter(row=>allowed.has(String((row as Record<string,unknown>).id)));
   }
   beginAcademicSearch(searchId: string) {
     const search = this.getAcademicSearch(searchId);
@@ -227,12 +272,12 @@ export class AcademicRepository {
       .run();
     return search;
   }
-  completeAcademicSearch(searchId: string, resultCount: number) {
+  completeAcademicSearch(searchId: string, resultCount: number,status:'COMPLETED'|'PARTIAL'='COMPLETED') {
     const timestamp = now();
     this.db
       .update(academicSearches)
       .set({
-        status: "COMPLETED",
+        status,
         resultCount,
         completedAt: timestamp,
         errorJson: null,
@@ -264,7 +309,7 @@ export class AcademicRepository {
     const timestamp = now();
     this.db
       .update(academicSearches)
-      .set({ status: "RUNNING", startedAt: timestamp, updatedAt: timestamp })
+      .set({ status: "DISCOVERING", startedAt: timestamp, updatedAt: timestamp })
       .where(eq(academicSearches.id, searchId))
       .run();
     const sources = this.db
@@ -282,19 +327,10 @@ export class AcademicRepository {
     const results = this.filterOpportunities(search.filters);
     for (const item of results.slice(0, 25))
       this.queueAcademicAi("ANALYZE_ACADEMIC_OPPORTUNITY_AI", String(item.id));
-    this.db
-      .update(academicSearches)
-      .set({
-        status: "COMPLETED",
-        resultCount: results.length,
-        completedAt: now(),
-        updatedAt: now(),
-      })
-      .where(eq(academicSearches.id, searchId))
-      .run();
+    for(const item of results)this.associateSearchResult({searchId,opportunityId:String(item.id),discoveryQuery:'saved official sources',status:'SAVED_MATCH'});
     return {
       searchId,
-      status: "COMPLETED",
+      status: "DISCOVERING",
       sourcesQueued: sources.length,
       resultCount: results.length,
     };
@@ -311,8 +347,8 @@ export class AcademicRepository {
       ANY: [],
     };
     const fundingMap: Record<string, string[]> = {
-      FULLY_FUNDED: ["CONFIRMED_FULL_FUNDING"],
-      TUITION_STIPEND: ["CONFIRMED_FULL_FUNDING"],
+      FULLY_FUNDED: ["CONFIRMED_FULL_FUNDING","POTENTIAL_FUNDING_UNCONFIRMED","TUITION_FREE_FUNDING_REQUIRED","UNKNOWN"],
+      TUITION_STIPEND: ["CONFIRMED_FULL_FUNDING","POTENTIAL_FUNDING_UNCONFIRMED","UNKNOWN"],
       TUITION_FREE: ["TUITION_FREE_FUNDING_REQUIRED"],
       PARTIAL: ["PARTIAL_FUNDING"],
       AVAILABLE: [
@@ -330,8 +366,9 @@ export class AcademicRepository {
     const nowMs = Date.now();
     return rows
       .filter((row) => {
-        const text =
-            `${row.title} ${row.university_name} ${row.country}`.toLowerCase(),
+        const detail=this.getOpportunity(String(row.id)) as Record<string,unknown>|null;
+        const evidence=JSON.stringify(detail?.evidence??[]),professors=JSON.stringify(detail?.professorCases??[]),analysis=JSON.stringify(detail?.aiAnalyses??[]),requirements=JSON.stringify(detail?.requirements??{});
+        const text = normalizeResearchText(`${row.title} ${row.university_name} ${row.country} ${detail?.program_name??''} ${evidence} ${professors} ${analysis} ${requirements}`),
           status = String(row.status),
           eligibility = String(row.eligibility_status),
           funding = String(row.funding_category),
@@ -342,6 +379,8 @@ export class AcademicRepository {
             Number(row.current_score) >= 75) ||
           (filters.status === "FULLY_FUNDED" &&
             funding === "CONFIRMED_FULL_FUNDING") ||
+          (filters.status === "FUNDING_UNDER_REVIEW" &&
+            ["UNKNOWN","POTENTIAL_FUNDING_UNCONFIRMED","TUITION_FREE_FUNDING_REQUIRED"].includes(funding)) ||
           (filters.status === "ELIGIBLE" &&
             ["ELIGIBLE", "LIKELY_ELIGIBLE"].includes(eligibility)) ||
           (filters.status === "NEEDS_REVIEW" &&
@@ -372,7 +411,8 @@ export class AcademicRepository {
             )) &&
           (!fundingMap[filters.funding]?.length ||
             fundingMap[filters.funding]!.includes(funding)) &&
-          (!filters.keyword || text.includes(filters.keyword.toLowerCase()))
+          (!filters.keyword || text.includes(normalizeResearchText(filters.keyword))) &&
+          (!filters.researchAreas.length || filters.researchAreas.some(area=>researchTerms(area).some(term=>text.includes(term))))
         );
       })
       .sort((a, b) =>
@@ -780,7 +820,12 @@ export class AcademicRepository {
         ),
       )
       .get();
-    if (existing) return existing;
+    if (existing) {
+      const fundingRank:Record<string,number>={UNKNOWN:0,POTENTIAL_FUNDING_UNCONFIRMED:1,PARTIAL_FUNDING:2,TUITION_FREE_FUNDING_REQUIRED:3,CONFIRMED_FULL_FUNDING:4,SELF_FUNDED:4};
+      const nextFunding=input.fundingCategory&&(fundingRank[input.fundingCategory]??0)>=(fundingRank[existing.fundingCategory]??0)?input.fundingCategory:existing.fundingCategory;
+      this.db.update(academicOpportunities).set({programId:input.programId??existing.programId,fundingOpportunityId:input.fundingOpportunityId??existing.fundingOpportunityId,deadline:input.deadline??existing.deadline,fundingCategory:nextFunding,sourceUrl:input.sourceUrl??existing.sourceUrl,notes:input.notes??existing.notes,lastVerifiedAt:now(),updatedAt:now()}).where(eq(academicOpportunities.id,existing.id)).run();
+      return this.getOpportunity(existing.id)!;
+    }
     const timestamp = now(),
       id = randomUUID();
     this.db

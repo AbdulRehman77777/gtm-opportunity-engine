@@ -71,6 +71,20 @@
       "when": 1790749147502,
       "tag": "0009_melted_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790842054698,
+      "tag": "0010_good_weapon_omega",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1790842371027,
+      "tag": "0011_abnormal_random",
+      "breakpoints": true
     }
   ]
 }

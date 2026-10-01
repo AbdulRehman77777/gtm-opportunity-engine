@@ -408,8 +408,16 @@ export const academicWatchlists = sqliteTable('academic_watchlists', {
 });
 
 export const academicSearches = sqliteTable('academic_searches', {
-  id:text('id').primaryKey(), applicantProfileId:text('applicant_profile_id').notNull().references(()=>academicApplicantProfiles.id), filtersJson:text('filters_json').notNull(), status:text('status').notNull().default('QUEUED'), resultCount:integer('result_count').notNull().default(0), startedAt:text('started_at'), completedAt:text('completed_at'), errorJson:text('error_json'), ...timestamps
+  id:text('id').primaryKey(), applicantProfileId:text('applicant_profile_id').notNull().references(()=>academicApplicantProfiles.id), filtersJson:text('filters_json').notNull(), status:text('status').notNull().default('QUEUED'), resultCount:integer('result_count').notNull().default(0), progressJson:text('progress_json').notNull().default('{}'), discoveryProvider:text('discovery_provider'), discoveryModel:text('discovery_model'), discoveryErrorCategory:text('discovery_error_category'), startedAt:text('started_at'), completedAt:text('completed_at'), errorJson:text('error_json'), ...timestamps
 }, table=>[index('idx_academic_searches_profile_created').on(table.applicantProfileId,table.createdAt),index('idx_academic_searches_status').on(table.status)]);
+
+export const academicSearchResults = sqliteTable('academic_search_results', {
+  id:text('id').primaryKey(), searchId:text('search_id').notNull().references(()=>academicSearches.id), opportunityId:text('opportunity_id').notNull().references(()=>academicOpportunities.id), discoveredAt:text('discovered_at').notNull(), discoveryQuery:text('discovery_query'), candidateUrl:text('candidate_url'), status:text('status').notNull().default('VERIFIED'), relevanceScore:real('relevance_score').notNull().default(0), createdAt:text('created_at').notNull(), updatedAt:text('updated_at').notNull()
+}, table=>[uniqueIndex('idx_academic_search_results_search_opportunity').on(table.searchId,table.opportunityId),index('idx_academic_search_results_search_time').on(table.searchId,table.discoveredAt)]);
+
+export const academicDiscoveryCandidates = sqliteTable('academic_discovery_candidates', {
+  id:text('id').primaryKey(), searchId:text('search_id').notNull().references(()=>academicSearches.id), query:text('query').notNull(), url:text('url').notNull(), title:text('title').notNull(), snippet:text('snippet').notNull().default(''), provider:text('provider').notNull(), model:text('model').notNull(), discoveredAt:text('discovered_at').notNull()
+}, table=>[uniqueIndex('idx_academic_discovery_candidates_search_url').on(table.searchId,table.url),index('idx_academic_discovery_candidates_search_time').on(table.searchId,table.discoveredAt)]);
 
 export const academicShortlist = sqliteTable('academic_shortlist', {
   id:text('id').primaryKey(), entityType:text('entity_type').notNull(), entityId:text('entity_id').notNull(), notes:text('notes'), createdAt:text('created_at').notNull(), updatedAt:text('updated_at').notNull()
