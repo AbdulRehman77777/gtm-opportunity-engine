@@ -7,6 +7,8 @@ import {
   createAIProvider,
   GroqProvider,
   AIProviderError,
+  browserDiscoverWithRetry,
+  type BrowserDiscoveryDiagnostic,
   type AIProvider,
 } from "@gtm/ai";
 import {
@@ -418,27 +420,32 @@ export class Worker {
       this.config.GROQ_BASE_URL,
       this.config.GROQ_MODEL,
       this.config.GROQ_API_KEY,
-      30_000,
+      this.config.GROQ_BROWSER_SEARCH_TIMEOUT_MS,
     );
     const maximum = Math.min(12, this.config.AI_MAX_RESEARCH_ITEMS_PER_RUN);
     let discoveryProvider = "deterministic";
     let discoveryModel = "official-source-catalog";
     const query=`Official current ${search.filters.degree} opportunities in ${search.filters.countries.join(', ')}. Funding intent: ${search.filters.funding}. Research areas: ${search.filters.researchAreas.join(', ')}. Return official university, government, or research institute URLs.`;
-    let candidates:Array<{url:string;title:string;snippet:string;officialUrl:string;universityName:string;country:string;programTitle:string;degreeLevel:'PHD'|'MASTERS'|'MS_PHD'|'RESEARCH'|'FELLOWSHIP'}>=fallbackAcademicCandidates(search.filters.countries).map(item=>({...item,url:item.officialUrl,title:item.programTitle,snippet:'Curated official fallback'}));
+    let candidates:Array<{url:string;title:string;snippet:string;officialUrl:string;universityName:string;country:string;programTitle:string;degreeLevel:'PHD'|'MASTERS'|'MS_PHD'|'RESEARCH'|'FELLOWSHIP';origin:'GROQ_DISCOVERY'|'CURATED_FALLBACK'}>=fallbackAcademicCandidates(search.filters.countries).map(item=>({...item,url:item.officialUrl,title:item.programTitle,snippet:'Curated official fallback',origin:'CURATED_FALLBACK'}));
     let discoveryErrorCategory:string|null=null;
+    let diagnostics:BrowserDiscoveryDiagnostic[]=[];
     const progress={discoveryQueries:1,candidateUrls:0,pagesRetrieved:0,officialPagesVerified:0,opportunitiesCreated:0,fundingVerified:0,aiAnalysesCompleted:0,failures:0};
     try {
-      const discovered = await groq.browserDiscover({query,maxResults:Math.min(10,maximum)});
-      candidates = discovered.results.map(item=>({...item,officialUrl:item.url,universityName:'Pending extraction',country:search.filters.countries[0]??'Unknown',programTitle:item.title,degreeLevel:(search.filters.degree==='PHD'?'PHD':'RESEARCH') as 'PHD'|'RESEARCH'}));
+      const discovered = await browserDiscoverWithRetry(groq,{query,maxResults:Math.min(10,maximum)},{onAttempt:diagnostic=>{diagnostics=[...diagnostics,diagnostic];progress.discoveryQueries=diagnostics.length;this.academicRepository.updateAcademicSearch(searchId,{progress,diagnostics});}});
+      diagnostics=discovered.diagnostics;
+      candidates = discovered.results.map(item=>({...item,officialUrl:item.url,universityName:'Pending extraction',country:search.filters.countries[0]??'Unknown',programTitle:item.title,degreeLevel:(search.filters.degree==='PHD'?'PHD':'RESEARCH') as 'PHD'|'RESEARCH',origin:'GROQ_DISCOVERY'}));
       discoveryProvider = discovered.provider;
       discoveryModel = discovered.model;
       progress.candidateUrls=candidates.length;
-      this.academicRepository.updateAcademicSearch(searchId,{status:'VERIFYING',progress,provider:discoveryProvider,model:discoveryModel,errorCategory:null});
+      this.academicRepository.updateAcademicSearch(searchId,{status:'VERIFYING',progress,diagnostics,provider:discoveryProvider,model:discoveryModel,errorCategory:null});
     } catch (error) {
       discoveryErrorCategory=error instanceof AIProviderError?(error.code==='MISCONFIGURED'?'AUTH':error.code):'UPSTREAM';
+      const recorded=(error as AIProviderError&{diagnostics?:BrowserDiscoveryDiagnostic[]}).diagnostics;if(recorded)diagnostics=recorded;
+      progress.discoveryQueries=diagnostics.length;
+      if(diagnostics.length)diagnostics=diagnostics.map((item,index)=>index===diagnostics.length-1?{...item,fallbackUsed:true}:item);
       progress.failures++;
       progress.candidateUrls=candidates.length;
-      this.academicRepository.updateAcademicSearch(searchId,{status:'VERIFYING',progress,provider:'fallback',model:'official-source-catalog',errorCategory:discoveryErrorCategory});
+      this.academicRepository.updateAcademicSearch(searchId,{status:'VERIFYING',progress,diagnostics,provider:'fallback',model:'official-source-catalog',errorCategory:discoveryErrorCategory});
       this.log.warn(
         { provider: "groq", reason: error instanceof Error ? error.message : "failed" },
         "Groq discovery unavailable; using curated official sources",
@@ -453,7 +460,7 @@ export class Worker {
       globalConcurrency: 1,
       userAgent: "NorthstarAcademicResearch/0.1 (+public-evidence-only)",
     });
-    for(const candidate of candidates)this.academicRepository.saveDiscoveryCandidate({searchId,query,url:candidate.officialUrl,title:candidate.title,snippet:candidate.snippet,provider:discoveryProvider,model:discoveryModel});
+    for(const candidate of candidates)this.academicRepository.saveDiscoveryCandidate({searchId,query,url:candidate.officialUrl,title:candidate.title,snippet:candidate.snippet,provider:candidate.origin,model:discoveryModel});
     let verified = 0;
     for (const candidate of candidates.slice(0, maximum)) {
       if (!isAcceptableAcademicSource(candidate.officialUrl)) continue;
@@ -472,12 +479,12 @@ export class Worker {
         progress.failures++;
       }
       const source = this.academicRepository.saveSource({
-        kind: "GROQ_DISCOVERY",
+        kind: candidate.origin,
         name: new URL(candidate.officialUrl).hostname,
         url: candidate.officialUrl,
         canonicalUrl: fetched.page.canonicalUrl,
         official: true,
-        metadata: { searchId, discoveredBy: "groq-browser-search" },
+        metadata: { searchId, discoveredBy: candidate.origin==='GROQ_DISCOVERY'?"groq-browser-search":"curated-fallback" },
       });
       const run = this.academicRepository.beginAcademicResearch(source.id);
       this.academicRepository.finishAcademicResearch(run.id, source.id, [

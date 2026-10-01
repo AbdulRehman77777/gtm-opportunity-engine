@@ -206,8 +206,10 @@ export class AcademicRepository {
           ...row,
           filters: parse<AcademicSearchFilters>(row.filtersJson),
           progress: parse<Record<string,number>>(row.progressJson),
+          discoveryDiagnostics: parse<Array<Record<string,unknown>>>(row.discoveryDiagnosticsJson),
           filtersJson: undefined,
           progressJson: undefined,
+          discoveryDiagnosticsJson: undefined,
         }
       : null;
   }
@@ -222,14 +224,17 @@ export class AcademicRepository {
         ...row,
         filters: parse<AcademicSearchFilters>(row.filtersJson),
         progress: parse<Record<string,number>>(row.progressJson),
+        discoveryDiagnostics: parse<Array<Record<string,unknown>>>(row.discoveryDiagnosticsJson),
         filtersJson: undefined,
         progressJson: undefined,
+        discoveryDiagnosticsJson: undefined,
       }));
   }
-  updateAcademicSearch(searchId:string,input:{status?:string;progress?:Record<string,number>;provider?:string;model?:string;errorCategory?:string|null}) {
+  updateAcademicSearch(searchId:string,input:{status?:string;progress?:Record<string,number>;diagnostics?:Array<Record<string,unknown>>;provider?:string;model?:string;errorCategory?:string|null}) {
     this.db.update(academicSearches).set({
       ...(input.status?{status:input.status}:{}),
       ...(input.progress?{progressJson:JSON.stringify(input.progress)}:{}),
+      ...(input.diagnostics?{discoveryDiagnosticsJson:JSON.stringify(input.diagnostics)}:{}),
       ...(input.provider?{discoveryProvider:input.provider}:{}),
       ...(input.model?{discoveryModel:input.model}:{}),
       ...(input.errorCategory!==undefined?{discoveryErrorCategory:input.errorCategory}:{}),

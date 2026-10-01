@@ -82,7 +82,7 @@ export async function getAIHealth(){const response=await fetch('/health/ai');if(
 async function academic<T>(path:string,init?:RequestInit){const response=await fetch(`/api/academic${path}`,init);if(!response.ok)throw new Error(await errorMessage(response));return(await response.json() as {data:T}).data;}
 export const getAcademicToday=()=>academic<AcademicToday>('/today');
 export type AcademicSearchFilters={countries:string[];degree:'PHD'|'MS_MSC'|'MS_TO_PHD'|'RESEARCH_MASTERS'|'RESEARCH_FELLOWSHIP'|'GRADUATE_RESEARCH'|'ANY';funding:'FULLY_FUNDED'|'TUITION_STIPEND'|'TUITION_FREE'|'PARTIAL'|'AVAILABLE'|'UNKNOWN'|'ANY';researchAreas:string[];keyword:string;status:string;sort:'BEST_MATCH'|'FUNDING'|'DEADLINE'|'NEWEST'|'COUNTRY'|'PROFESSOR_MATCH'};
-export type AcademicSearch={id:string;status:string;resultCount:number;createdAt:string;filters:AcademicSearchFilters;progress:Record<string,number>;discoveryErrorCategory:string|null};
+export type AcademicSearch={id:string;status:string;resultCount:number;createdAt:string;filters:AcademicSearchFilters;progress:Record<string,number>;discoveryErrorCategory:string|null;discoveryDiagnostics:Array<{provider:string;model:string;attempt:number;durationMs:number;resultCount:number;failureCategory:string|null;fallbackUsed:boolean}>};
 export const getAcademicOpportunities=(filters?:AcademicSearchFilters,searchId?:string)=>academic<AcademicOpportunity[]>(`/opportunities${filters?`?filters=${encodeURIComponent(JSON.stringify(filters))}${searchId?`&searchId=${searchId}`:''}`:''}`);
 export const getAcademicDiscoveryStatus=()=>academic<{enabled:boolean}>('/discovery-status');
 export const getAcademicOpportunity=(id:string)=>academic<Record<string,unknown>>(`/opportunities/${id}`);

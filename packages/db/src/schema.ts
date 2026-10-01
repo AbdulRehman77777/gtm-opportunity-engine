@@ -408,7 +408,7 @@ export const academicWatchlists = sqliteTable('academic_watchlists', {
 });
 
 export const academicSearches = sqliteTable('academic_searches', {
-  id:text('id').primaryKey(), applicantProfileId:text('applicant_profile_id').notNull().references(()=>academicApplicantProfiles.id), filtersJson:text('filters_json').notNull(), status:text('status').notNull().default('QUEUED'), resultCount:integer('result_count').notNull().default(0), progressJson:text('progress_json').notNull().default('{}'), discoveryProvider:text('discovery_provider'), discoveryModel:text('discovery_model'), discoveryErrorCategory:text('discovery_error_category'), startedAt:text('started_at'), completedAt:text('completed_at'), errorJson:text('error_json'), ...timestamps
+  id:text('id').primaryKey(), applicantProfileId:text('applicant_profile_id').notNull().references(()=>academicApplicantProfiles.id), filtersJson:text('filters_json').notNull(), status:text('status').notNull().default('QUEUED'), resultCount:integer('result_count').notNull().default(0), progressJson:text('progress_json').notNull().default('{}'), discoveryDiagnosticsJson:text('discovery_diagnostics_json').notNull().default('[]'), discoveryProvider:text('discovery_provider'), discoveryModel:text('discovery_model'), discoveryErrorCategory:text('discovery_error_category'), startedAt:text('started_at'), completedAt:text('completed_at'), errorJson:text('error_json'), ...timestamps
 }, table=>[index('idx_academic_searches_profile_created').on(table.applicantProfileId,table.createdAt),index('idx_academic_searches_status').on(table.status)]);
 
 export const academicSearchResults = sqliteTable('academic_search_results', {

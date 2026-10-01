@@ -15,6 +15,7 @@ const envSchema = z.object({
   GROQ_BASE_URL: z.string().url().default('https://api.groq.com/openai/v1'),
   GROQ_MODEL: z.string().min(1).default('openai/gpt-oss-120b'),
   GROQ_BROWSER_SEARCH_ENABLED: z.string().default('false').transform(value=>value==='true'),
+  GROQ_BROWSER_SEARCH_TIMEOUT_MS: z.coerce.number().int().positive().default(90_000),
   AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
   AI_MAX_DAILY_REQUESTS: z.coerce.number().int().positive().default(300),
   AI_MAX_RESEARCH_ITEMS_PER_RUN: z.coerce.number().int().min(1).max(100).default(25),

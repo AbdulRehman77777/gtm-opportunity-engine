@@ -1,6 +1,13 @@
 import type { z } from 'zod';
 import { AIProviderError, type AIHealth, type AIProvider, type StructuredGeneration } from './types.js';
 
+export type BrowserDiscoveryDiagnostic={provider:string;model:string;attempt:number;durationMs:number;resultCount:number;failureCategory:string|null;fallbackUsed:boolean};
+export async function browserDiscoverWithRetry(provider:GroqProvider,input:{query:string;maxResults?:number},options:{onAttempt?:(diagnostic:BrowserDiscoveryDiagnostic)=>void|Promise<void>;sleep?:(ms:number)=>Promise<void>;maxBackoffMs?:number}={}){
+  const diagnostics:BrowserDiscoveryDiagnostic[]=[];const sleep=options.sleep??(ms=>new Promise(resolve=>setTimeout(resolve,ms)));const maxBackoff=options.maxBackoffMs??3_000;
+  for(let attempt=1;attempt<=2;attempt++){const started=Date.now();try{const result=await provider.browserDiscover(input);const diagnostic={provider:result.provider,model:result.model,attempt,durationMs:result.latencyMs,resultCount:result.results.length,failureCategory:null,fallbackUsed:false};diagnostics.push(diagnostic);await options.onAttempt?.(diagnostic);return{...result,diagnostics}}catch(error){const failure=error instanceof AIProviderError?error:new AIProviderError('Groq browser discovery failed','UPSTREAM','groq');const diagnostic={provider:failure.provider,model:provider.modelInfo().model,attempt,durationMs:Date.now()-started,resultCount:0,failureCategory:failure.code==='MISCONFIGURED'?'AUTH':failure.code,fallbackUsed:false};diagnostics.push(diagnostic);await options.onAttempt?.(diagnostic);const retryable=['TIMEOUT','UPSTREAM','RATE_LIMITED'].includes(failure.code);if(attempt===2||!retryable){Object.assign(failure,{diagnostics});throw failure}const requested=failure.code==='RATE_LIMITED'?(failure.retryAfterMs??500):500;await sleep(Math.min(maxBackoff,Math.max(100,requested)));}}
+  throw new AIProviderError('Groq browser discovery failed','UPSTREAM','groq');
+}
+
 export class GroqProvider implements AIProvider{
   readonly name='groq';
   constructor(private readonly baseUrl:string,private readonly model:string,private readonly apiKey:string|undefined,private readonly timeoutMs=60_000,private readonly fetcher:typeof fetch=fetch){}

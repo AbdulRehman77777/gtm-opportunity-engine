@@ -1,0 +1,1 @@
+ALTER TABLE `academic_searches` ADD `discovery_diagnostics_json` text DEFAULT '[]' NOT NULL;
